@@ -1,4 +1,4 @@
-AIOps-Monitor: 智能运维监控与 AI 诊断系统
+#AIOps-Monitor: 智能运维监控与 AI 诊断系统
 🌟 项目简介 (Project Overview)
 AIOps-Monitor 是一款基于全栈技术栈与大语言模型（LLM）驱动的现代化运维监控平台。系统不仅能够实时采集服务器硬件指标（CPU、内存等），更能通过 AI 引擎对异常数据进行深度分析，实现从“发现问题”到“诊断问题”的自动化闭环。
 
