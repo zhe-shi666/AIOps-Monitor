@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Fallback styles when Tailwind is not applied */
+html, body, #app { 
+  height: 100%; 
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  margin: 0;
+  background-color: #f9fafb; /* Gray-50 */
+  color: #111827; /* Gray-900 */
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* 中文字体 - 应用到所有前端元素 */
+html.font-chinese,
+html.font-chinese body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", 
+    "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+}
+
+body.font-chinese {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", 
+    "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+}
+
+/* 前端元素应用中文字体 - 排除后端数据区域（.prose）和等宽字体 */
+html.font-chinese *:not(.prose):not(.prose *):not(.font-mono):not(code):not(pre),
+body.font-chinese *:not(.prose):not(.prose *):not(.font-mono):not(code):not(pre) {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", 
+    "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+}
+
+/* 英文字体 - 应用到所有前端元素 */
+html.font-english,
+html.font-english body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", 
+    Arial, sans-serif !important;
+}
+
+body.font-english {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", 
+    Arial, sans-serif !important;
+}
+
+/* 前端元素应用英文字体 - 排除后端数据区域（.prose）和等宽字体 */
+html.font-english *:not(.prose):not(.prose *):not(.font-mono):not(code):not(pre),
+body.font-english *:not(.prose):not(.prose *):not(.font-mono):not(code):not(pre) {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", 
+    Arial, sans-serif !important;
+}
+
+/* 等宽字体保持原样 */
+html.font-chinese .font-mono,
+html.font-chinese code,
+html.font-chinese pre,
+html.font-english .font-mono,
+html.font-english code,
+html.font-english pre,
+body.font-chinese .font-mono,
+body.font-chinese code,
+body.font-chinese pre,
+body.font-english .font-mono,
+body.font-english code,
+body.font-english pre {
+  font-family: 'Courier New', Courier, monospace !important;
+}
+
+/* 确保等宽字体在所有浏览器中正确显示 */
+code, pre, .font-mono {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* 平滑滚动 */
+html {
+  scroll-behavior: smooth;
+}

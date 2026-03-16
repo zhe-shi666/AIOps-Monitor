@@ -1,0 +1,29 @@
+version: '3.8'
+services:
+  # 关系型数据库：存储配置与告警记录
+  mysql:
+    image: mysql:8.0
+    container_name: aiops-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: aiops_monitor
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+
+  # 时序数据库：存储监控指标
+  prometheus:
+    image: prom/prometheus
+    container_name: aiops-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  # 缓存与实时数据处理
+  redis:
+    image: redis:latest
+    container_name: aiops-redis
+    ports:
+      - "6379:6379"

@@ -1,0 +1,56 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ai-ops-monitor
+  datasource:
+    url: jdbc:mysql://localhost:3307/aiops_monitor?useSSL=false&serverTimezone=UTC
+    username: root
+    password: root
+#  ai:
+#    openai:
+#      api-key: ******** # 环境变量引入，保护隐私
+#      base-url: https://api.deepseek.com # 以DeepSeek为例
+#      chat:
+#        options:
+#          # DeepSeek 目前的主流模型名
+#          model: deepseek-chat
+#          # 采样温度，0.7 比较适合在严谨诊断中带一点分析发散
+#          temperature: 0.7
+
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          # 确保你已经在命令行执行了: ollama run deepseek-r1:7b (或 qwen2.5)
+          model: qwen3:0.6b
+          temperature: 0.7
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,prometheus,metrics" # 暴露 Prometheus 所需端点
+  endpoint:
+    prometheus:
+      enabled: true
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+      enabled: true
+    tags:
+      application: ai-ops-monitor # 为所有指标添加应用名称标签
+
+  threads:
+    virtual:
+      enabled: true
+
+scrape_configs:
+  - job_name: 'spring-ai-ops'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
