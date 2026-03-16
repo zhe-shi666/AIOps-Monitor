@@ -9,8 +9,7 @@
 ---
 
 ## 📸 项目演示
-> **提示**：
-
+![GitHub图像](/photo/shizhe.png)
 ---
 
 ## 🛠️ 技术架构 (Architecture)
@@ -47,3 +46,5 @@ ai-ops-monitor
 └── aiops-vue (前端)
     ├── src/components/  # ECharts 监控组件
     └── src/api/         # WebSocket STOMP 客户端配置
+
+
