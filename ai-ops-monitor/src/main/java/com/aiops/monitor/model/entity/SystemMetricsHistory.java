@@ -18,4 +18,6 @@ public class SystemMetricsHistory {
     private Double memUsage;
 
     private java.time.LocalDateTime timestamp = java.time.LocalDateTime.now();
+
+    private String hostname;
 }

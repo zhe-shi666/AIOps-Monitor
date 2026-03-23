@@ -73,7 +73,7 @@ public class AlarmCheckTask {
 
         // 2. 扔给异步线程池处理 AI 逻辑
         String alertInfo = String.format("%s 使用率为 %.2f%%", name, value);
-        List<SystemMetricsHistory> history = metricsRepository.findTop10ByOrderByTimestampDesc();
+        List<SystemMetricsHistory> history = metricsRepository.findTop20ByOrderByTimestampDesc();
         String context = dataBuilder.buildMetricContext(history);
 
         // 调用异步方法，主线程会瞬间往下走

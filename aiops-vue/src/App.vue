@@ -1,16 +1,27 @@
 <template>
   <div class="min-h-screen p-8 transition-colors duration-300" 
-     :class="isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'">
-    <!-- WS 连接状态 -->
-    <div class="absolute top-4 left-4 z-50 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700">
-      <span class="relative flex h-2.5 w-2.5">
-        <span :class="wsConnected ? 'animate-ping' : ''" class="absolute inline-flex h-full w-full rounded-full opacity-75" 
-              :style="wsConnected ? 'background-color: rgb(34, 197, 94);' : 'background-color: rgb(239, 68, 68);'"></span>
-        <span class="relative inline-flex rounded-full h-2.5 w-2.5" 
-              :style="wsConnected ? 'background-color: rgb(34, 197, 94);' : 'background-color: rgb(239, 68, 68);'"></span>
+       :class="isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'">
+    <!-- WebSocket 连接状态 -->
+    <div class="fixed top-4 left-6 z-50 flex items-center gap-2 px-2.25 py-0.35 rounded-md border shadow-md backdrop-blur-sm transition-all duration-300"
+         :class="wsConnected 
+           ? 'bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20' 
+           : 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'">
+      <!-- 状态指示灯 -->
+      <span :class="wsConnected ? 'animate-pulse' : ''" 
+            class="inline-flex h-1.5 w-1.5 rounded-full opacity-75 flex-shrink-0"
+            :style="wsConnected 
+              ? 'background-color: rgb(16, 185, 129); box-shadow: 0 0 4px rgb(16, 185, 129);' 
+              : 'background-color: rgb(239, 68, 68); box-shadow: 0 0 4px rgb(239, 68, 68);'">
       </span>
-      <span class="text-[10px] font-mono tracking-wider" :class="wsConnected ? 'text-emerald-400' : 'text-red-400'">
-        WS {{ wsConnected ? '已连接' : '未连接' }}
+      
+      <!-- 连接状态文字 -->
+      <span class="text-[8px] font-semibold tracking-wide whitespace-nowrap" 
+            :class="wsConnected 
+              ? 'text-emerald-400' 
+              : 'text-red-400'">
+        {{ wsConnected 
+          ? (fontType === 'chinese' ? 'WS连接中' : 'LIVE') 
+          : (fontType === 'chinese' ? 'WS断开' : 'OFF') }}
       </span>
     </div>
     
@@ -39,24 +50,32 @@
       <div class="flex-1">
         <h1 class="text-4xl font-bold tracking-tight mb-2" 
             :class="isDarkMode ? 'text-slate-100' : 'text-gray-900'">
-          {{ fontType === 'chinese' ? 'AIOPS 智能运维指挥中心' : 'AIOPS COMMAND CENTER' }}
+          {{ mode === 'standalone' 
+            ? (fontType === 'chinese' ? '🛡️ 节点卫士监控系统' : '🛡️ Node Guardian Monitor')
+            : (fontType === 'chinese' ? '🌐 集群指挥官中心' : '🌐 Cluster Commander Center')
+          }}
         </h1>
         <p class="text-xs tracking-wider uppercase mt-1" 
            :class="isDarkMode ? 'text-slate-400' : 'text-gray-500'">
-          {{ fontType === 'chinese' ? '实时监控与智能诊断平台' : 'Real-time Monitoring & AI Diagnosis Platform' }}
+          {{ mode === 'standalone' 
+            ? (fontType === 'chinese' ? '单机实时监控与智能诊断' : 'Single Machine Real-time Monitoring & AI Diagnosis')
+            : (fontType === 'chinese' ? '分布式集群监控与协同分析' : 'Distributed Cluster Monitoring & Collaborative Analysis')
+          }}
         </p>
       </div>
       
-      <div class="flex items-center gap-3 px-6 py-3 rounded-xl border shadow-sm"
-           :class="isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'">
-        <span class="relative flex h-3 w-3">
-          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
-          <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-        </span>
-        <span class="text-xs tracking-wider font-medium" 
-              :class="isDarkMode ? 'text-emerald-400' : 'text-emerald-600'">
-          {{ fontType === 'chinese' ? '核心系统在线' : 'CORE SYSTEM ONLINE' }}
-        </span>
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-4 px-6 py-3 rounded-xl border shadow-sm"
+             :class="isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-gray-200'">
+          <span class="relative flex h-3 w-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+          </span>
+          <span class="text-xs tracking-wider font-medium" 
+                :class="isDarkMode ? 'text-emerald-400' : 'text-emerald-600'">
+            {{ fontType === 'chinese' ? '核心系统在线' : 'CORE SYSTEM ONLINE' }}
+          </span>
+        </div>
       </div>
     </header>
 
@@ -68,22 +87,82 @@
             <h2 class="text-slate-300 font-medium tracking-widest uppercase text-sm pl-2">
               {{ fontType === 'chinese' ? '系统实时指标' : 'Real-time Metrics' }}
             </h2>
-            <div class="flex gap-8 font-mono text-sm pr-2">
-              <span class="text-cyan-400 font-semibold">CPU: {{ lastCpu }}%</span>
-              <span class="text-purple-400 font-semibold">MEM: {{ lastMem }}%</span>
+            <div class="flex gap-6 font-mono text-sm pr-2">
+              <span class="text-cyan-400 font-semibold">
+                {{ mode === 'standalone' ? '本机节点' : `节点数: ${Object.keys(nodesData).length}` }}
+              </span>
+              <span class="text-purple-400 font-semibold">数据点: {{ totalDataPoints }}</span>
             </div>
           </div>
           <div ref="chartRef" class="h-80 w-full bg-slate-800/20 rounded-2xl border border-slate-600/30 shadow-inner mt-8" style="min-height: 320px;"></div>
         </div>
       </div>
 
-      <!-- 右侧：AI 诊断报告区域 -->
+      <!-- 右侧：模式适配区域 -->
       <div class="col-span-4 flex flex-col gap-6">
-        <div class="rounded-2xl p-10 h-[600px] flex flex-col shadow-xl hover:shadow-2xl transition-all duration-300 border bg-slate-900/35 border-slate-700">
-          <div class="flex items-center justify-between mb-10">
+        <!-- 节点卫士模式：硬件信息 -->
+        <div v-if="mode === 'standalone'" class="rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border bg-slate-900/35 border-slate-700">
+          <h3 class="text-sm font-semibold flex items-center gap-3 text-slate-300 mb-4">
+            <span class="w-2 h-5 rounded-full bg-cyan-600"></span>
+            {{ fontType === 'chinese' ? '硬件信息' : 'Hardware Info' }}
+          </h3>
+          <div class="space-y-3 text-xs font-mono">
+            <div class="flex justify-between">
+              <span class="text-slate-400">{{ fontType === 'chinese' ? 'CPU型号' : 'CPU Model' }}:</span>
+              <span class="text-cyan-400">Intel Core i7-12700K</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">{{ fontType === 'chinese' ? '内存总量' : 'Total RAM' }}:</span>
+              <span class="text-cyan-400">32GB DDR4</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">{{ fontType === 'chinese' ? '磁盘剩余' : 'Disk Free' }}:</span>
+              <span class="text-cyan-400">256GB / 1TB</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">{{ fontType === 'chinese' ? '系统负载' : 'System Load' }}:</span>
+              <span class="text-cyan-400">2.1 / 8.0</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 集群指挥官模式：统计指标 -->
+        <div v-if="mode === 'distributed'" class="rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 border bg-slate-900/35 border-slate-700">
+          <h3 class="text-sm font-semibold flex items-center gap-3 text-slate-300 mb-4">
+            <span class="w-2 h-5 rounded-full bg-purple-600"></span>
+            {{ fontType === 'chinese' ? '集群统计' : 'Cluster Stats' }}
+          </h3>
+          <div class="space-y-3 text-xs font-mono">
+            <div class="flex justify-between">
+              <span class="text-slate-400">{{ fontType === 'chinese' ? '在线节点' : 'Online Nodes' }}:</span>
+              <span class="text-purple-400 font-semibold">{{ Object.keys(nodesData).length }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">{{ fontType === 'chinese' ? '异常节点' : 'Abnormal Nodes' }}:</span>
+              <span class="text-red-400 font-semibold">{{ abnormalNodes }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">{{ fontType === 'chinese' ? '平均负载' : 'Avg Load' }}:</span>
+              <span class="text-purple-400">{{ averageLoad }}%</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">{{ fontType === 'chinese' ? '最高负载' : 'Max Load' }}:</span>
+              <span class="text-orange-400">{{ maxLoad }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI 诊断报告区域 -->
+        <div class="rounded-2xl p-10 flex-1 flex flex-col shadow-xl hover:shadow-2xl transition-all duration-300 border bg-slate-900/35 border-slate-700">
+          <div class="flex items-center justify-between mb-6">
             <h2 class="text-sm font-semibold flex items-center gap-4 text-slate-300">
               <span class="w-2 h-5 rounded-full bg-slate-600"></span>
-              {{ fontType === 'chinese' ? 'AI 专家诊断' : 'AI EXPERT DIAGNOSIS' }}
+              <span>
+                {{ mode === 'standalone' 
+                  ? (fontType === 'chinese' ? '[本地诊断] AI 专家分析' : '[Local Diagnosis] AI Expert Analysis')
+                  : (fontType === 'chinese' ? '[全局预测] AI 专家分析' : '[Global Forecast] AI Expert Analysis')
+                }}
+              </span>
             </h2>
             <span class="text-[10px] font-mono tabular-nums text-slate-500">
               {{ fontType === 'chinese' ? `${reports.length} 份报告` : `${reports.length} Reports` }}
@@ -119,7 +198,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import { marked } from 'marked'
 import * as echarts from 'echarts'
 import SockJS from 'sockjs-client'
@@ -148,13 +227,51 @@ watch(fontType, () => {
 // ECharts 相关
 const chartRef = ref(null)
 let myChart = null
-const lastCpu = ref(0)
-const lastMem = ref(0)
 
-// 数据缓存区
-const cpuData = ref([])
-const memData = ref([])
+// 数据分流：存储不同节点的数据
+const nodesData = reactive({})
 const timeLabels = ref([])
+
+// 监控模式
+const mode = ref('standalone') // 'standalone' | 'distributed'
+
+// 计算总数据点
+const totalDataPoints = computed(() => {
+  return Object.values(nodesData).reduce((total, data) => total + data.length, 0)
+})
+
+// 计算异常节点数（负载超过80%）
+const abnormalNodes = computed(() => {
+  return Object.keys(nodesData).filter(hostname => {
+    const data = nodesData[hostname]
+    if (data.length === 0) return false
+    const latestValue = data[data.length - 1]
+    return latestValue > 80
+  }).length
+})
+
+// 计算平均负载
+const averageLoad = computed(() => {
+  const allLatestValues = Object.keys(nodesData).map(hostname => {
+    const data = nodesData[hostname]
+    return data.length > 0 ? data[data.length - 1] : 0
+  }).filter(value => value > 0)
+  
+  if (allLatestValues.length === 0) return 0
+  const avg = allLatestValues.reduce((sum, val) => sum + val, 0) / allLatestValues.length
+  return avg.toFixed(1)
+})
+
+// 计算最高负载
+const maxLoad = computed(() => {
+  const allLatestValues = Object.keys(nodesData).map(hostname => {
+    const data = nodesData[hostname]
+    return data.length > 0 ? data[data.length - 1] : 0
+  }).filter(value => value > 0)
+  
+  if (allLatestValues.length === 0) return 0
+  return Math.max(...allLatestValues).toFixed(1)
+})
 
 // 切换主题
 const toggleTheme = () => {
@@ -184,8 +301,64 @@ const updateBodyFont = () => {
   document.body.classList.add(fontClass)
 }
 
+// 获取节点对应的霓虹颜色
+const getNodeColor = (hostname) => {
+  const colors = [
+    '#22d3ee', // 霓虹青
+    '#a855f7', // 霓虹紫
+    '#f59e0b', // 霓虹橙
+    '#10b981', // 霓虹绿
+    '#ef4444', // 霓虹红
+    '#8b5cf6', // 霓虹蓝紫
+    '#ec4899', // 霓虹粉
+    '#14b8a6', // 霓虹青绿
+  ]
+  const index = hostname.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length
+  return colors[index]
+}
+
 // 获取图表配置
 const getChartOption = () => {
+  // 根据模式过滤节点数据
+  let filteredNodesData = {}
+  
+  if (mode.value === 'standalone') {
+    // 节点卫士模式：显示所有节点（因为你的节点名不包含localhost）
+    filteredNodesData = { ...nodesData }
+  } else {
+    // 集群指挥官模式：显示所有节点，但不包括localhost
+    Object.keys(nodesData).forEach(hostname => {
+      // 过滤掉localhost相关的节点
+      if (!hostname.includes('localhost') && !hostname.includes('127.0.0.1')) {
+        filteredNodesData[hostname] = nodesData[hostname]
+      }
+    })
+  }
+  
+  console.log('模式:', mode.value)
+  console.log('所有节点:', Object.keys(nodesData))
+  console.log('过滤后节点:', Object.keys(filteredNodesData))
+  
+  const series = Object.keys(filteredNodesData).map(hostname => ({
+    name: hostname,
+    type: 'line',
+    smooth: true,
+    showSymbol: false,
+    lineStyle: {
+      width: 3,
+      color: getNodeColor(hostname),
+      shadowColor: getNodeColor(hostname),
+      shadowBlur: 10
+    },
+    areaStyle: {
+      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: getNodeColor(hostname) + '4d' }, // 30% opacity
+        { offset: 1, color: getNodeColor(hostname) + '00' }  // 0% opacity
+      ])
+    },
+    data: filteredNodesData[hostname] || []
+  }))
+
   return {
     backgroundColor: 'transparent',
     tooltip: {
@@ -199,9 +372,10 @@ const getChartOption = () => {
       }
     },
     legend: {
-      data: ['CPU使用率', '内存使用率'],
+      data: Object.keys(filteredNodesData),
       textStyle: { color: '#94a3b8' },
-      right: '10%'
+      right: '10%',
+      top: '5%'
     },
     grid: {
       top: '15%',
@@ -225,46 +399,7 @@ const getChartOption = () => {
       axisLabel: { color: '#64748b' },
       axisLine: { lineStyle: { color: '#334155' } }
     },
-    series: [
-      {
-        name: 'CPU使用率',
-        type: 'line',
-        smooth: true,
-        showSymbol: false,
-        lineStyle: {
-          width: 3,
-          color: '#22d3ee',
-          shadowColor: '#22d3ee',
-          shadowBlur: 10
-        },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(34, 211, 238, 0.3)' },
-            { offset: 1, color: 'rgba(34, 211, 238, 0)' }
-          ])
-        },
-        data: cpuData.value
-      },
-      {
-        name: '内存使用率',
-        type: 'line',
-        smooth: true,
-        showSymbol: false,
-        lineStyle: {
-          width: 3,
-          color: '#a855f7',
-          shadowColor: '#a855f7',
-          shadowBlur: 10
-        },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(168, 85, 247, 0.3)' },
-            { offset: 1, color: 'rgba(168, 85, 247, 0)' }
-          ])
-        },
-        data: memData.value
-      }
-    ],
+    series,
     animation: true,
     animationDuration: 300,
     animationEasing: 'linear'
@@ -281,105 +416,228 @@ const initChart = () => {
       return
     }
     
-    const width = chartRef.value.offsetWidth
-    const height = chartRef.value.offsetHeight
+    // 强制重新计算布局和设置样式
+    chartRef.value.style.display = 'block'
+    chartRef.value.style.visibility = 'visible'
+    chartRef.value.style.position = 'relative'
+    chartRef.value.style.width = '100%'
+    chartRef.value.style.height = '320px'
+    chartRef.value.style.minWidth = '400px'
+    chartRef.value.style.minHeight = '320px'
+    
+    // 强制重新计算布局
+    chartRef.value.offsetHeight // 触发重排
+    
+    const width = chartRef.value.offsetWidth || chartRef.value.clientWidth
+    const height = chartRef.value.offsetHeight || chartRef.value.clientHeight
     console.log(`尝试 ${attempt + 1}: 图表容器尺寸: ${width} x ${height}`)
     
     if (width === 0 || height === 0) {
-      if (attempt < 10) {
-        console.log(`容器尺寸为0，200ms后重试 (尝试 ${attempt + 1}/10)`)
-        setTimeout(() => tryInitChart(attempt + 1), 200)
+      if (attempt < 15) {
+        console.log(`容器尺寸为0，300ms后重试 (尝试 ${attempt + 1}/15)`)
+        setTimeout(() => tryInitChart(attempt + 1), 300)
       } else {
-        console.error('多次尝试后容器尺寸仍为0，强制设置最小尺寸')
+        console.error('多次尝试后容器尺寸仍为0，强制设置尺寸并初始化')
+        // 最后的强制措施
         chartRef.value.style.width = '800px'
         chartRef.value.style.height = '320px'
-        setTimeout(() => tryInitChart(attempt + 1), 100)
+        chartRef.value.style.minWidth = '800px'
+        chartRef.value.style.minHeight = '320px'
+        
+        setTimeout(() => {
+          try {
+            if (myChart) {
+              myChart.dispose()
+              myChart = null
+            }
+            myChart = echarts.init(chartRef.value)
+            const option = getChartOption()
+            myChart.setOption(option)
+            console.log('✅ 强制初始化图表成功!')
+          } catch (error) {
+            console.error('强制初始化失败:', error)
+          }
+        }, 100)
       }
       return
     }
     
     console.log('容器尺寸正常，开始初始化图表...')
     try {
+      // 如果已有图表实例，先销毁
+      if (myChart) {
+        myChart.dispose()
+        myChart = null
+      }
+      
       myChart = echarts.init(chartRef.value)
       const option = getChartOption()
       myChart.setOption(option)
       console.log('✅ 图表初始化成功!')
-      
-      // 立即更新数据
-      if (cpuData.value.length > 0 && memData.value.length > 0) {
-        myChart.setOption({
-          xAxis: { data: timeLabels.value },
-          series: [
-            { data: cpuData.value },
-            { data: memData.value }
-          ]
-        })
-      }
+      console.log('当前节点:', Object.keys(nodesData))
+      console.log('图表配置:', option.series.length, '条线')
     } catch (error) {
       console.error('图表初始化失败:', error)
+      console.error('错误详情:', error.stack)
     }
   }
   
-  setTimeout(() => tryInitChart(), 100)
+  // 使用 nextTick 确保 DOM 完全渲染
+  nextTick(() => {
+    setTimeout(() => tryInitChart(), 200)
+  })
 }
 
 // 更新图表数据
 const updateChartData = (metric) => {
+  const { hostname, value, name } = metric
   const now = new Date().toLocaleTimeString().replace(/^\D*/, '')
   
-  if (metric.name === 'CPU') {
-    lastCpu.value = metric.value.toFixed(1)
-    cpuData.value.push(metric.value)
+  console.log(`收到数据: ${hostname}, ${name} = ${value}%`)
+  
+  // 1. 如果是新发现的节点，初始化它的数据序列
+  if (!nodesData[hostname]) {
+    nodesData[hostname] = []
+    console.log(`发现新节点: ${hostname}`)
+  }
+  
+  // 2. 将数据推入对应节点的数组
+  nodesData[hostname].push(value)
+  
+  // 3. 维持时间标签（以数据最多的节点为准）
+  const maxLength = Math.max(...Object.values(nodesData).map(data => data.length))
+  while (timeLabels.value.length < maxLength) {
     timeLabels.value.push(now)
-  } else if (metric.name === 'MEMORY') {
-    lastMem.value = metric.value.toFixed(1)
-    memData.value.push(metric.value)
   }
   
-  // 确保两个数组长度一致
-  while (memData.value.length < cpuData.value.length) {
-    memData.value.push(memData.value[memData.value.length - 1] || 0)
+  // 4. 限制数据窗口大小为 60 个点
+  if (nodesData[hostname].length > 60) {
+    nodesData[hostname].shift()
   }
-  while (memData.value.length > cpuData.value.length) {
-    memData.value.pop()
-  }
-  
-  // 维持窗口大小为 60 个点
-  if (cpuData.value.length > 60) {
-    cpuData.value.shift()
-    memData.value.shift()
+  if (timeLabels.value.length > 60) {
     timeLabels.value.shift()
   }
   
-  // 更新图表
-  if (myChart) {
-    myChart.setOption({
-      xAxis: { data: timeLabels.value },
-      series: [
-        { data: cpuData.value },
-        { data: memData.value }
-      ]
-    })
+  // 5. 检查图表容器尺寸，如果为0则重新初始化
+  if (myChart && chartRef.value) {
+    const width = chartRef.value.offsetWidth || chartRef.value.clientWidth
+    const height = chartRef.value.offsetHeight || chartRef.value.clientHeight
+    
+    if (width === 0 || height === 0) {
+      console.log('检测到图表容器尺寸为0，重新初始化图表')
+      initChart()
+      return
+    }
   }
+  
+  // 6. 更新图表
+  if (myChart) {
+    try {
+      const option = getChartOption()
+      myChart.setOption(option, true)
+      console.log(`图表更新成功: ${hostname} = ${value}%`)
+      console.log(`图表中现在有 ${option.series.length} 条线`)
+    } catch (error) {
+      console.error('图表更新失败:', error)
+      console.error('错误详情:', error.stack)
+    }
+  }
+  
+  console.log(`当前节点数据:`, Object.keys(nodesData).map(key => `${key}: ${nodesData[key].length}个点`))
 }
 
-// 初始化 WebSocket
+// 定期检查连接状态
+let connectionCheckInterval = null
+
+const startConnectionCheck = () => {
+  if (connectionCheckInterval) {
+    clearInterval(connectionCheckInterval)
+  }
+  
+  connectionCheckInterval = setInterval(() => {
+    if (!wsConnected.value) {
+      console.log('检测到连接断开，尝试重新连接...')
+      initWebSocket()
+    }
+  }, 5000) // 每5秒检查一次
+}
+
+const stopConnectionCheck = () => {
+  if (connectionCheckInterval) {
+    clearInterval(connectionCheckInterval)
+    connectionCheckInterval = null
+  }
+}
 const initWebSocket = () => {
+  console.log('正在连接WebSocket...')
   const socket = new SockJS('http://localhost:8080/ws-monitor')
   const stompClient = Stomp.over(socket)
-  stompClient.debug = null
+  stompClient.debug = true // 开启调试日志
 
   stompClient.connect({}, () => {
     wsConnected.value = true
+    console.log('✅ WebSocket连接成功!')
+    
+    // 启动连接检查
+    startConnectionCheck()
+    
+    // 连接成功后，立即请求一次数据（如果后端支持）
+    console.log('连接成功，开始订阅数据...')
     
     // 订阅指标数据
     stompClient.subscribe('/topic/metrics', (msg) => {
       try {
+        console.log('收到原始消息:', msg.body)
         const metric = JSON.parse(msg.body)
+        console.log('解析后的数据:', metric)
         updateChartData(metric)
       } catch (e) {
         console.error('Failed to parse metric data:', e)
+        console.error('原始消息内容:', msg.body)
       }
+    })
+    
+    // 订阅模式信息 - 增强调试，支持多个主题
+    stompClient.subscribe('/topic/mode', (msg) => {
+      try {
+        console.log('收到模式消息:', msg.body)
+        const modeInfo = JSON.parse(msg.body)
+        console.log('解析后的模式信息:', modeInfo)
+        mode.value = modeInfo.mode || modeInfo.modeType || 'standalone' // 兼容不同的字段名
+        console.log(`监控模式更新: ${mode.value}`)
+      } catch (e) {
+        console.error('Failed to parse mode data:', e)
+        console.error('原始模式消息内容:', msg.body)
+      }
+    })
+    
+    // 订阅系统状态消息（后端可能发送到这里）
+    stompClient.subscribe('/topic/system-status', (msg) => {
+      try {
+        console.log('收到系统状态消息:', msg.body)
+        const statusInfo = JSON.parse(msg.body)
+        console.log('解析后的系统状态信息:', statusInfo)
+        
+        // 强制更新模式
+        const newMode = statusInfo.mode || statusInfo.modeType || 'standalone'
+        mode.value = newMode
+        console.log(`通过系统状态更新模式: ${mode.value}`)
+        console.log(`模式值类型: ${typeof mode.value}`)
+        console.log(`模式值长度: ${mode.value.length}`)
+        
+        // 强制触发Vue响应式更新
+        nextTick(() => {
+          console.log(`nextTick后当前模式: ${mode.value}`)
+        })
+      } catch (e) {
+        console.error('Failed to parse system status data:', e)
+        console.error('原始系统状态消息内容:', msg.body)
+      }
+    })
+    
+    // 订阅所有可能的主题进行调试
+    stompClient.subscribe('/topic/*', (msg) => {
+      console.log('收到通用消息 - 主题:', msg.headers.destination, '内容:', msg.body)
     })
     
     // 订阅 AI 报告
@@ -399,8 +657,36 @@ const initWebSocket = () => {
         reports.value = reports.value.slice(0, 50)
       }
     })
-  }, () => {
+    
+    // 连接成功后，主动请求模式信息
+    console.log('连接成功，等待后端发送模式信息...')
+    
+    // 10秒后检查是否收到模式信息
+    setTimeout(() => {
+      console.log('=== WebSocket状态检查 ===')
+      console.log('当前模式:', mode.value)
+      console.log('已连接节点:', Object.keys(nodesData))
+      console.log('是否收到模式信息:', mode.value !== 'standalone' ? '是' : '否')
+      
+      // 如果没有收到模式信息，可能是后端没有发送
+      if (mode.value === 'standalone' && Object.keys(nodesData).length > 0) {
+        console.log('⚠️  可能后端没有发送模式信息，建议检查后端配置')
+      }
+    }, 10000)
+    
+  }, (error) => {
     wsConnected.value = false
+    console.error('❌ WebSocket连接失败:', error)
+    console.error('连接错误详情:', error)
+    
+    // 停止连接检查
+    stopConnectionCheck()
+    
+    // 5秒后重试连接
+    setTimeout(() => {
+      console.log('尝试重新连接WebSocket...')
+      initWebSocket()
+    }, 5000)
   })
 }
 
@@ -432,32 +718,35 @@ onMounted(() => {
   updateBodyTheme()
   updateBodyFont()
   
-  // 添加初始模拟数据
+  // 添加时间标签
   const now = new Date()
   for (let i = 59; i >= 0; i--) {
     const time = new Date(now - i * 1000)
     timeLabels.value.push(time.toLocaleTimeString().replace(/^\D*/, ''))
-    cpuData.value.push(Math.random() * 30 + 20) // 20-50% CPU
-    memData.value.push(Math.random() * 20 + 40) // 40-60% Memory
   }
-  lastCpu.value = cpuData.value[cpuData.value.length - 1].toFixed(1)
-  lastMem.value = memData.value[memData.value.length - 1].toFixed(1)
   
-  console.log('初始数据已生成:')
-  console.log('CPU数据长度:', cpuData.value.length)
-  console.log('内存数据长度:', memData.value.length)
-  console.log('时间标签长度:', timeLabels.value.length)
+  console.log('界面初始化完成，等待数据接收...')
+  console.log('当前模式:', mode.value)
   
-  initChart()
-  initWebSocket()
-  window.addEventListener('resize', handleResize)
+  // 使用 nextTick 确保 DOM 完全渲染后再初始化图表
+  nextTick(() => {
+    initChart()
+    initWebSocket()
+    window.addEventListener('resize', handleResize)
+  })
 })
 
 onUnmounted(() => {
+  // 清理图表
   if (myChart) {
     myChart.dispose()
     myChart = null
   }
+  
+  // 清理WebSocket连接检查
+  stopConnectionCheck()
+  
+  // 清理事件监听器
   window.removeEventListener('resize', handleResize)
 })
 </script>
@@ -536,7 +825,7 @@ onUnmounted(() => {
 .prose a {
   text-decoration: underline;
   text-underline-offset: 2px;
-  color: #60a5fa;
+  color: '#60a5fa';
 }
 .prose a:hover {
   color: #3b82f6;

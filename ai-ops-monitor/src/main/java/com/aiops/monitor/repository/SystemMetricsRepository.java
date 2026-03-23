@@ -8,9 +8,10 @@ import java.util.List;
 
 @Repository
 public interface SystemMetricsRepository extends JpaRepository<SystemMetricsHistory, Long> {
-    // 获取最近的 10 条记录
-    List<SystemMetricsHistory> findTop10ByOrderByTimestampDesc();
 
-    // 获取最近的 20 条记录用于预测
+    // 分布式模式：获取全集群最近20条数据
     List<SystemMetricsHistory> findTop20ByOrderByTimestampDesc();
+
+    // 本地模式：仅获取当前节点最近20条数据
+    List<SystemMetricsHistory> findTop20ByHostnameOrderByTimestampDesc(String hostname);
 }
