@@ -14,10 +14,13 @@
 
 ## 🛠️ 技术架构 (Architecture)
 
-系统采用 **“感知-处理-决策”** 的闭环设计：
-1. **感知层**：利用 OSHI 跨平台库进行毫秒级硬件指标抓取。
-2. **通信层**：基于 WebSocket (STOMP) 实现服务端向客户端的亚秒级数据推送。
-3. **决策层**：结合 Spring AI 异步调用大模型，根据历史趋势进行故障诊断。
+1. **核心框架**：Spring Boot 3.x
+2. **数据采集**：OSHI (SystemHardwareCollector)
+3. **实时通信**：WebSocket + STOMP (WebSocketConfig)
+4. **分布式/缓存**：Redis (RedisConfig + RedisPubSubConfig)
+5. **数据存储**：MySQL + Spring Data JPA (Repository 层)
+6. **人工智能**：LangChain4j / Spring AI (AiService)
+7. **任务调度**：Spring Task (@Scheduled 在 CollectorScheduler 中)
 
 
 
@@ -25,29 +28,66 @@
 
 ## ✨ 核心功能 (Features)
 
+* **单兵作战（Standalone）**，适合小服务器自守。
+* **集群合力（Distributed）**，通过 Redis 实现数据的汇聚。
+* **引入了AI 运维（AIOps）**，通过实时指标 -> 自动化 Prompt -> 大模型诊断，解决了传统监控“只报警不给方案”的痛点。
 * **实时全双工监控**：不同于传统的 HTTP 轮询，系统采用 WebSocket 协议，实现 CPU、内存等指标的“流式”渲染。
 * **智能告警诊断**：当指标超过阈值时，自动提取故障前 20 条历史记录构建 Context，调用 AI 给出修复方案。
-* **多源指标适配**：预留 Prometheus 接口，支持从单机监控向分布式集群监控的无缝扩展。
 * **异步非阻塞处理**：通过 `@EnableAsync` 线程池隔离 AI 推理任务，确保监控主链路的高可用性。
-
 ---
 
 ## 🏗️ 目录结构 (Structure)
 
 ```text
-ai-ops-monitor
-├── ai-ops-monitor (后端)
-│   ├── src/main/java/com/aiops/monitor
-│   │   ├── collector/   # 数据采集与定时任务
-│   │   ├── service/     # AI 逻辑与核心业务
-│   │   ├── config/      # WebSocket/Async/Metrics 配置
-│   │   ├── model/       # Entity 与 DTO
-|   |   ├── controller   # 发送广播
-|   |   └── repository   # jpa框架获取数据
-│   └── docker-compose.yml # 环境一键编排
-└── aiops-vue (前端)
-    ├── src/components/  # ECharts 监控组件
-    └── src/api/         # WebSocket STOMP 客户端配置
+
+ ├─java
+ │  └─com
+ │      └─aiops
+ │          └─monitor
+ │              │  AiOpsMonitorApplication.java
+ │              │  
+ │              ├─collector
+ │              │      AlarmCheckTask.java
+ │              │      CollectorScheduler.java
+ │              │      MetricsExporter.java
+ │              │      SystemHardwareCollector.java
+ │              │      
+ │              ├─config
+ │              │      AsyncConfig.java
+ │              │      RedisConfig.java
+ │              │      RedisPubSubConfig.java
+ │              │      WebSocketConfig.java
+ │              │      
+ │              │      
+ │              ├─listener
+ │              │      WebSocketModeListener.java
+ │              │      
+ │              ├─model
+ │              │  ├─dto
+ │              │  │      MetricDTO.java
+ │              │  │      
+ │              │  └─entity
+ │              │          IncidentLog.java
+ │              │          SystemMetricsHistory.java
+ │              │          
+ │              ├─repository
+ │              │      IncidentLogRepository.java
+ │              │      SystemMetricsRepository.java
+ │              │      
+ │              └─service
+ │                  │  AiService.java
+ │                  │  MetricsPublisher.java
+ │                  │  PromptDataBuilder.java
+ │                  │  RedisReceiver.java
+ │                  │  
+ │                  └─impl
+ │                   |   DistributedPublisher.java
+ │                   |   StandalonePublisher.java
+ │                          
+ └─resources
+     │  application-dev.yml
+     │  application-prod.yml
+     │  application.yml
 
 
 ```
@@ -56,12 +96,13 @@ ai-ops-monitor
 * JDK 17+
 * Node.js 18+
 * MySQL 8.0+（可以用docker拉起/自己配置）
+* redis （可以用docker拉起/自己配置）
 
 **2. 配置启动**
-1. **一键拉起中间件环境（mysql、redis、prom）**：打开终端，运行：docker-compose up -d
+1. **一键拉起中间件环境（mysql、redis、(prom可无)）**：打开终端，运行：docker-compose up -d
 1. **数据库**：执行根目录下 mysql初始化脚本。
-2. **API Key**：在 application.yml 中配置你的 LLM (DeepSeek/GPT) 秘钥。我使用的是本地的ollama
-3. **启动后端**：运行 AiOpsMonitorApplication
+2. **API Key**：在 application.yml 中配置你的 LLM (DeepSeek/GPT) 秘钥。我使用的是本地的ollama。（用LLM的话，maven也需要修改一下）
+3. **启动后端**：如果是本地模式就运行dev的配置文件，如果是集群模式就运行prod的配置文件且在每一个线程的程序实参中配置（--server.port=8081 --spring.application.name=Node-B --monitor.mode=distributed --spring.profiles.active=prod）
 4. **启动前端**：
 * cd aiops-vue
 * npm install
