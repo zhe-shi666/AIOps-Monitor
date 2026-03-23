@@ -75,19 +75,19 @@
  │              │      SystemMetricsRepository.java
  │              │      
  │              └─service
- │                  │  AiService.java
- │                  │  MetricsPublisher.java
- │                  │  PromptDataBuilder.java
- │                  │  RedisReceiver.java
+ │                  │     AiService.java
+ │                  │     MetricsPublisher.java
+ │                  │     PromptDataBuilder.java
+ │                  │     RedisReceiver.java
  │                  │  
  │                  └─impl
- │                   |   DistributedPublisher.java
- │                   |   StandalonePublisher.java
+ │                   |    DistributedPublisher.java
+ │                   └─   StandalonePublisher.java
  │                          
  └─resources
-     │  application-dev.yml
-     │  application-prod.yml
-     │  application.yml
+     │   application-dev.yml
+     │   application-prod.yml
+     └─  application.yml
 
 
 ```
