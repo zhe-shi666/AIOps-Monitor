@@ -8,12 +8,16 @@ import com.aiops.monitor.service.AiService;
 import com.aiops.monitor.service.PromptDataBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @Slf4j
@@ -37,9 +41,15 @@ public class AlarmCheckTask {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
+    @Value("${monitor.mode:standalone}")
+    private String monitorMode;
+
+    @Autowired
+    private Environment environment;
+
     // 设定告警阈值
-    private static final double CPU_THRESHOLD = 5.0;  // CPU 超过 70% 告警
-    private static final double MEM_THRESHOLD = 80.0;  // 内存超过 90% 告警
+    private static final double CPU_THRESHOLD = 70.0;  // CPU 超过 70% 告警
+    private static final double MEM_THRESHOLD = 90.0;  // 内存超过 90% 告警
 
     @Scheduled(fixedRate = 5000) // 每 5 秒执行一次检测
     public void checkSystemHealth() {
@@ -60,21 +70,54 @@ public class AlarmCheckTask {
                 String.format("%.2f", cpuUsage), String.format("%.2f", memUsage));
     }
 
+
+    // 记录每个指标上次告警的时间，防止告警风暴
+    private Map<String, LocalDateTime> lastAlarmTime = new ConcurrentHashMap<>();
+
     private void recordIncident(String name, double value, double threshold) {
+
+        // 检查是否在静默期（例如 3 分钟内不再重复告警）
+        LocalDateTime last = lastAlarmTime.get(name);
+        if (last != null && last.plusMinutes(3).isAfter(LocalDateTime.now())) {
+            return;
+        }
+        lastAlarmTime.put(name, LocalDateTime.now());
+
+        // 0. 获取当前节点名称
+        String currentHost = environment.getProperty("spring.application.name", "Default-Node");
+
         // 1. 存数据库（主线程执行，确保及时性）
         IncidentLog logEntry = new IncidentLog();
         // ... 设置属性
-        logEntry.setMetricName(name);      // 这里一定要设置，name 是传进来的 "CPU" 或 "MEMORY"
+        logEntry.setHostname(currentHost);
+        logEntry.setMetricName(name);
         logEntry.setMetricValue(value);
         logEntry.setThreshold(threshold);
         logEntry.setCreatedAt(LocalDateTime.now());
         logEntry.setMessage(String.format("%s 使用率过高: %.2f%%", name, value));
         logRepository.save(logEntry);
 
-        // 2. 扔给异步线程池处理 AI 逻辑
-        String alertInfo = String.format("%s 使用率为 %.2f%%", name, value);
-        List<SystemMetricsHistory> history = metricsRepository.findTop20ByOrderByTimestampDesc();
-        String context = dataBuilder.buildMetricContext(history);
+
+        // 2. 根据模式决定扔给异步线程池处理 AI 逻辑
+        List<SystemMetricsHistory> history;
+        String analysisScope;
+        boolean isDistributed = "distributed".equalsIgnoreCase(monitorMode);
+        String alertInfo;
+        if (isDistributed) {
+            // 分布式模式：上帝视角，查全表
+            alertInfo= String.format("%s中%s 使用率为 %.2f%%",currentHost, name, value);
+            history = metricsRepository.findTop20ByOrderByTimestampDesc();
+            analysisScope = "全集群整体";
+        } else {
+            // 本地模式：保镖视角，只看自己
+            alertInfo = String.format("%s 使用率为 %.2f%%", name, value);
+            history = metricsRepository.findTop20ByHostnameOrderByTimestampDesc(currentHost);
+            analysisScope = "本节点 (" + currentHost + ")";
+        }
+
+        if (history.isEmpty()) return;
+
+        String context = dataBuilder.buildMetricContext(history,isDistributed);
 
         // 调用异步方法，主线程会瞬间往下走
         aiService.getDiagnosticReportAsync(context, alertInfo)

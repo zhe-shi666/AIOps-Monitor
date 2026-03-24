@@ -14,20 +14,6 @@ public class SystemHardwareCollector {
     private final SystemInfo si = new SystemInfo();
     private final HardwareAbstractionLayer hal = si.getHardware();
 
-
-    // 注入 MeterRegistry
-    public SystemHardwareCollector(MeterRegistry registry) {
-        // 注册 CPU 指标
-        Gauge.builder("os.cpu.usage", this, SystemHardwareCollector::getCpuUsage)
-                .description("OS CPU Usage Percent")
-                .register(registry);
-
-        // 注册内存指标
-        Gauge.builder("os.mem.usage", this, SystemHardwareCollector::getMemoryUsage)
-                .description("OS Memory Usage Percent")
-                .register(registry);
-    }
-
     /**
      * 获取实时 CPU 使用率
      */

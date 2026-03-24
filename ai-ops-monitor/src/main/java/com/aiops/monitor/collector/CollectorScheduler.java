@@ -29,9 +29,8 @@ public class CollectorScheduler {
     @Autowired
     private com.aiops.monitor.service.MetricsPublisher metricsPublisher;
 
-
-    @Autowired
-    private MetricsExporter metricsExporter;
+    /*@Autowired
+    private MetricsExporter metricsExporter;*/
 
 
     @Value("${monitor.mode:standalone}")
@@ -55,15 +54,15 @@ public class CollectorScheduler {
         // 0. 统一获取节点名称，避免多次重复调用
         String nodeName = environment.getProperty("spring.application.name", "Default-Node");
 
-        // 1. 存入数据库 (关键修复点：这里之前漏了 setHostname)
+        // 1. 存入数据库
         SystemMetricsHistory history = new SystemMetricsHistory();
         history.setCpuUsage(cpuUsage);
         history.setMemUsage(memUsage);
         history.setTimestamp(java.time.LocalDateTime.now());
-        history.setHostname(nodeName); // ✨ 必须设置这个，否则 SQL 过滤会失效
+        history.setHostname(nodeName);
         metricsRepository.save(history);
 
-        // 2. 构建并发送 CPU 指标 (代码已复用 nodeName)
+        // 2. 构建并发送给前端 CPU 指标
         MetricDTO cpuMetric = MetricDTO.builder()
                 .name("CPU")
                 .value(cpuUsage)
@@ -73,7 +72,7 @@ public class CollectorScheduler {
                 .build();
         metricsPublisher.send("/topic/metrics", cpuMetric);
 
-        // 3. 构建并发送内存指标
+        // 3. 构建并发送给前端内存指标
         MetricDTO memMetric = MetricDTO.builder()
                 .name("MEMORY")
                 .value(memUsage)
@@ -86,7 +85,7 @@ public class CollectorScheduler {
         log.debug("📡 [{}] 实时指标已推送并入库: CPU {}%, MEM {}%",
                 nodeName, String.format("%.1f", cpuUsage), String.format("%.1f", memUsage));
 
-        metricsExporter.updateMetrics(cpuUsage, memUsage);
+//        metricsExporter.updateMetrics(cpuUsage, memUsage);
     }
 
     // 任务 B：每 60 秒进行一次 AI 深度预测
@@ -98,8 +97,9 @@ public class CollectorScheduler {
         // 2. 根据模式决定查询范围（策略分流）
         List<SystemMetricsHistory> history;
         String analysisScope;
+        boolean isDistributed = "distributed".equalsIgnoreCase(monitorMode);
 
-        if ("distributed".equalsIgnoreCase(monitorMode)) {
+        if (isDistributed) {
             // 分布式模式：上帝视角，查全表
             history = metricsRepository.findTop20ByOrderByTimestampDesc();
             analysisScope = "全集群整体";
@@ -112,7 +112,7 @@ public class CollectorScheduler {
         if (history.isEmpty()) return;
 
         // 3. 构建上下文并调用 AI
-        String context = dataBuilder.buildMetricContext(history);
+        String context = dataBuilder.buildMetricContext(history,isDistributed);
         String prompt = String.format("你是运维专家。请对 %s 的历史指标进行分析预测：%s", analysisScope, context);
 
         // 调用 aiService (注意：如果是分布式模式，这里建议配合我之前说的 Redis 锁)

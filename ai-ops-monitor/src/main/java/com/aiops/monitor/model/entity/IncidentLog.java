@@ -22,6 +22,8 @@ public class IncidentLog {
 
     private String message;
 
+    private String hostname;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 }

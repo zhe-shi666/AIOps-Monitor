@@ -5,7 +5,7 @@ monitor:
 spring:
   datasource:
     # 注意：这里的 IP 应该是你集群公用的 MySQL 地址
-    url: jdbc:mysql://localhost:3307/aiops_monitor?useSSL=false&serverTimezone=UTC
+    url: jdbc:mysql://localhost:3307/aiops_monitor?useUnicode=true&characterEncoding=utf-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
     username: root
     password: root
   data:
