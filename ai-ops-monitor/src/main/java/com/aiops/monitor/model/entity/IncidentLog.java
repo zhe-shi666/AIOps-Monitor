@@ -30,6 +30,15 @@ public class IncidentLog {
     @Column(name = "target_id")
     private Long targetId;
 
+    @Column(length = 20)
+    private String status = "OPEN";
+
+    @Column(name = "acknowledged_at")
+    private LocalDateTime acknowledgedAt;
+
+    @Column(name = "resolved_at")
+    private LocalDateTime resolvedAt;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 }

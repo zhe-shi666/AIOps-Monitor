@@ -3,6 +3,7 @@ package com.aiops.monitor.controller;
 import com.aiops.monitor.model.dto.AgentHeartbeatRequest;
 import com.aiops.monitor.model.dto.AgentRegisterRequest;
 import com.aiops.monitor.model.dto.MetricDTO;
+import com.aiops.monitor.model.entity.AlertThresholdConfig;
 import com.aiops.monitor.model.entity.IncidentLog;
 import com.aiops.monitor.model.entity.MonitorTarget;
 import com.aiops.monitor.model.entity.SystemMetricsHistory;
@@ -10,11 +11,11 @@ import com.aiops.monitor.repository.IncidentLogRepository;
 import com.aiops.monitor.repository.MonitorTargetRepository;
 import com.aiops.monitor.repository.SystemMetricsRepository;
 import com.aiops.monitor.service.MetricsPublisher;
+import com.aiops.monitor.service.ThresholdConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -33,19 +34,8 @@ public class AgentIngestController {
     private final SystemMetricsRepository systemMetricsRepository;
     private final IncidentLogRepository incidentLogRepository;
     private final MetricsPublisher metricsPublisher;
+    private final ThresholdConfigService thresholdConfigService;
     private final Map<String, LocalDateTime> lastAlertAt = new ConcurrentHashMap<>();
-
-    @Value("${monitor.threshold.cpu:70}")
-    private double cpuThreshold;
-
-    @Value("${monitor.threshold.memory:90}")
-    private double memoryThreshold;
-
-    @Value("${monitor.threshold.disk:85}")
-    private double diskThreshold;
-
-    @Value("${monitor.threshold.process-count:400}")
-    private int processCountThreshold;
 
     @PostMapping("/register")
     public ResponseEntity<Map<String, Object>> register(@Valid @RequestBody AgentRegisterRequest request) {
@@ -104,12 +94,13 @@ public class AgentIngestController {
         sendMetric("NET_TX", request.getNetTxBytesPerSec(), request, target);
         sendMetric("PROCESS_COUNT", request.getProcessCount() == null ? null : request.getProcessCount().doubleValue(), request, target);
 
-        evaluateAndRecordIncident(target, "CPU", request.getCpuUsage(), cpuThreshold);
-        evaluateAndRecordIncident(target, "MEMORY", request.getMemUsage(), memoryThreshold);
-        evaluateAndRecordIncident(target, "DISK", request.getDiskUsage(), diskThreshold);
+        AlertThresholdConfig threshold = thresholdConfigService.getOrCreateByUserId(target.getUserId());
+        evaluateAndRecordIncident(target, "CPU", request.getCpuUsage(), threshold.getCpuThreshold());
+        evaluateAndRecordIncident(target, "MEMORY", request.getMemUsage(), threshold.getMemoryThreshold());
+        evaluateAndRecordIncident(target, "DISK", request.getDiskUsage(), threshold.getDiskThreshold());
         evaluateAndRecordIncident(target, "PROCESS_COUNT",
                 request.getProcessCount() == null ? null : request.getProcessCount().doubleValue(),
-                processCountThreshold);
+                threshold.getProcessCountThreshold());
 
         return ResponseEntity.ok(Map.of(
                 "targetId", target.getId(),
@@ -177,6 +168,7 @@ public class AgentIngestController {
         log.setHostname(target.getHostname());
         log.setUserId(target.getUserId());
         log.setTargetId(target.getId());
+        log.setStatus("OPEN");
         log.setCreatedAt(now);
         incidentLogRepository.save(log);
     }

@@ -97,6 +97,7 @@ public class AlarmCheckTask {
         logEntry.setThreshold(threshold);
         logEntry.setCreatedAt(LocalDateTime.now());
         logEntry.setMessage(String.format("%s 使用率过高: %.2f%%", name, value));
+        logEntry.setStatus("OPEN");
         logRepository.save(logEntry);
 
 
