@@ -3,16 +3,10 @@
     <header class="page-hero">
       <div>
         <h1>
-          {{ mode === 'standalone'
-            ? (isZh ? '节点监控总览' : 'Node Monitor Overview')
-            : (isZh ? '集群监控总览' : 'Cluster Monitor Overview')
-          }}
+          {{ isZh ? '智能监控总览' : 'Monitoring Overview' }}
         </h1>
         <p>
-          {{ mode === 'standalone'
-            ? (isZh ? '单机实时监控与智能诊断' : 'Single-host monitoring and diagnostics')
-            : (isZh ? '分布式监控与协同分析' : 'Distributed monitoring and collaborative analysis')
-          }}
+          {{ isZh ? '统一指标视图，覆盖 1 到 N 主机规模' : 'Unified metrics view for 1..N host scale' }}
         </p>
       </div>
       <div class="flex items-center gap-3 flex-wrap">
@@ -69,33 +63,12 @@
         <div class="card-panel p-6 space-y-4">
           <div class="section-head mb-0">
             <div>
-              <h2 class="section-title text-base">
-                {{ mode === 'standalone'
-                  ? (isZh ? '节点硬件概览' : 'Node Snapshot')
-                  : (isZh ? '集群运行概览' : 'Cluster Snapshot')
-                }}
-              </h2>
-              <p class="section-subtitle">
-                {{ mode === 'standalone'
-                  ? (isZh ? '核心硬件与采集状态' : 'Core hardware and collector state')
-                  : (isZh ? '节点规模与异常分布' : 'Node scale and anomaly distribution')
-                }}
-              </p>
+              <h2 class="section-title text-base">{{ isZh ? '运行概览' : 'Runtime Snapshot' }}</h2>
+              <p class="section-subtitle">{{ isZh ? '统一卡片展示，按节点数量自动聚合' : 'Unified cards with automatic aggregation by node count' }}</p>
             </div>
           </div>
 
-          <div v-if="mode === 'standalone'" class="kpi-grid">
-            <div class="kpi-item">
-              <p class="kpi-label">{{ isZh ? 'CPU 型号' : 'CPU Model' }}</p>
-              <p class="kpi-value text-lg mt-2">{{ hardwareCpuModel }}</p>
-            </div>
-            <div class="kpi-item">
-              <p class="kpi-label">{{ isZh ? '总内存' : 'Total RAM' }}</p>
-              <p class="kpi-value text-emerald-300">{{ hardwareMemory }}</p>
-            </div>
-          </div>
-
-          <div v-else class="kpi-grid">
+          <div class="kpi-grid">
             <div class="kpi-item">
               <p class="kpi-label">{{ isZh ? '在线节点' : 'Online Nodes' }}</p>
               <p class="kpi-value text-violet-300">{{ nodeCount }}</p>
@@ -111,6 +84,17 @@
             <div class="kpi-item">
               <p class="kpi-label">{{ isZh ? '峰值' : 'Max' }}</p>
               <p class="kpi-value text-amber-300">{{ maxMetricDisplay }}</p>
+            </div>
+          </div>
+
+          <div class="note-box">
+            <div class="flex items-center justify-between gap-3">
+              <span>{{ isZh ? '采集端 CPU' : 'Collector CPU' }}</span>
+              <span class="font-mono text-xs">{{ hardwareCpuModel }}</span>
+            </div>
+            <div class="flex items-center justify-between gap-3 mt-2">
+              <span>{{ isZh ? '采集端总内存' : 'Collector Total RAM' }}</span>
+              <span class="font-mono text-xs">{{ hardwareMemory }}</span>
             </div>
           </div>
         </div>
@@ -156,7 +140,6 @@ const chartRef = ref(null)
 let myChart = null
 const metricSeries = reactive({})
 const metricLabels = reactive({})
-const mode = ref('standalone')
 
 const hardwareInfo = ref({
   cpuModel: '-',
@@ -255,7 +238,6 @@ const loadHardwareInfo = async () => {
       cpuModel: data?.cpuModel || '-',
       totalMemoryBytes: Number(data?.totalMemoryBytes || 0)
     }
-    if (data?.mode) mode.value = data.mode
   } catch (_e) {
     hardwareInfo.value = {
       cpuModel: '-',
@@ -407,12 +389,6 @@ const initWebSocket = () => {
 
     stomp.subscribe('/topic/metrics', (msg) => {
       try { updateChartData(JSON.parse(msg.body)) } catch (_e) { /* ignore */ }
-    })
-    stomp.subscribe('/topic/mode', (msg) => {
-      try { mode.value = JSON.parse(msg.body).mode || 'standalone' } catch (_e) { /* ignore */ }
-    })
-    stomp.subscribe('/topic/system-status', (msg) => {
-      try { mode.value = JSON.parse(msg.body).mode || 'standalone' } catch (_e) { /* ignore */ }
     })
   }, () => {
     wsConnected.value = false

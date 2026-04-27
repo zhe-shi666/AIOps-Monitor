@@ -148,7 +148,7 @@ const settingNav = computed(() => [
 const headerMap = computed(() => ({
   '/': {
     title: isZh.value ? '实时运营总览' : 'Operations Overview',
-    subtitle: isZh.value ? '集群状态、指标走势与 AI 分析' : 'Cluster status, metrics trends, and AI analysis'
+    subtitle: isZh.value ? '系统状态、指标走势与 AI 分析' : 'System health, metrics trends, and AI analysis'
   },
   '/targets': {
     title: isZh.value ? '监控目标资产' : 'Target Inventory',
