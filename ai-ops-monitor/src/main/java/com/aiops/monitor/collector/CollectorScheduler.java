@@ -50,6 +50,12 @@ public class CollectorScheduler {
     public void collectAndPush() {
         double cpuUsage = hardwareCollector.getCpuUsage();
         double memUsage = hardwareCollector.getMemoryUsage();
+        double diskUsage = hardwareCollector.getDiskUsage();
+        double[] netUsage = hardwareCollector.getNetworkBytesPerSec();
+        double netRxBytesPerSec = netUsage[0];
+        double netTxBytesPerSec = netUsage[1];
+        int processCount = hardwareCollector.getProcessCount();
+        long timestamp = System.currentTimeMillis();
 
         // 0. 统一获取节点名称，避免多次重复调用
         String nodeName = environment.getProperty("spring.application.name", "Default-Node");
@@ -58,6 +64,10 @@ public class CollectorScheduler {
         SystemMetricsHistory history = new SystemMetricsHistory();
         history.setCpuUsage(cpuUsage);
         history.setMemUsage(memUsage);
+        history.setDiskUsage(diskUsage);
+        history.setNetRxBytesPerSec(netRxBytesPerSec);
+        history.setNetTxBytesPerSec(netTxBytesPerSec);
+        history.setProcessCount(processCount);
         history.setTimestamp(java.time.LocalDateTime.now());
         history.setHostname(nodeName);
         metricsRepository.save(history);
@@ -68,7 +78,7 @@ public class CollectorScheduler {
                 .value(cpuUsage)
                 .ip("127.0.0.1")
                 .hostname(nodeName)
-                .timestamp(System.currentTimeMillis())
+                .timestamp(timestamp)
                 .build();
         metricsPublisher.send("/topic/metrics", cpuMetric);
 
@@ -78,12 +88,54 @@ public class CollectorScheduler {
                 .value(memUsage)
                 .ip("127.0.0.1")
                 .hostname(nodeName)
-                .timestamp(System.currentTimeMillis())
+                .timestamp(timestamp)
                 .build();
         metricsPublisher.send("/topic/metrics", memMetric);
 
-        log.debug("📡 [{}] 实时指标已推送并入库: CPU {}%, MEM {}%",
-                nodeName, String.format("%.1f", cpuUsage), String.format("%.1f", memUsage));
+        MetricDTO diskMetric = MetricDTO.builder()
+                .name("DISK")
+                .value(diskUsage)
+                .ip("127.0.0.1")
+                .hostname(nodeName)
+                .timestamp(timestamp)
+                .build();
+        metricsPublisher.send("/topic/metrics", diskMetric);
+
+        MetricDTO netRxMetric = MetricDTO.builder()
+                .name("NET_RX")
+                .value(netRxBytesPerSec)
+                .ip("127.0.0.1")
+                .hostname(nodeName)
+                .timestamp(timestamp)
+                .build();
+        metricsPublisher.send("/topic/metrics", netRxMetric);
+
+        MetricDTO netTxMetric = MetricDTO.builder()
+                .name("NET_TX")
+                .value(netTxBytesPerSec)
+                .ip("127.0.0.1")
+                .hostname(nodeName)
+                .timestamp(timestamp)
+                .build();
+        metricsPublisher.send("/topic/metrics", netTxMetric);
+
+        MetricDTO processMetric = MetricDTO.builder()
+                .name("PROCESS_COUNT")
+                .value((double) processCount)
+                .ip("127.0.0.1")
+                .hostname(nodeName)
+                .timestamp(timestamp)
+                .build();
+        metricsPublisher.send("/topic/metrics", processMetric);
+
+        log.debug("📡 [{}] 实时指标已推送并入库: CPU {}%, MEM {}%, DISK {}%, RX {}B/s, TX {}B/s, PROC {}",
+                nodeName,
+                String.format("%.1f", cpuUsage),
+                String.format("%.1f", memUsage),
+                String.format("%.1f", diskUsage),
+                String.format("%.0f", netRxBytesPerSec),
+                String.format("%.0f", netTxBytesPerSec),
+                processCount);
 
 //        metricsExporter.updateMetrics(cpuUsage, memUsage);
     }
