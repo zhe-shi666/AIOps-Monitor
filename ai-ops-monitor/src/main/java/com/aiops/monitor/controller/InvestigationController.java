@@ -2,11 +2,15 @@ package com.aiops.monitor.controller;
 
 import com.aiops.monitor.model.dto.AiActionExecuteRequest;
 import com.aiops.monitor.model.dto.AiActionPlanCreateRequest;
+import com.aiops.monitor.model.dto.AiHypothesisCreateRequest;
 import com.aiops.monitor.model.dto.AiInvestigationCreateRequest;
+import com.aiops.monitor.model.dto.AiObservationCreateRequest;
 import com.aiops.monitor.model.dto.AiReportSnapshotCreateRequest;
 import com.aiops.monitor.model.entity.AiActionPlan;
 import com.aiops.monitor.model.entity.AiActionRun;
+import com.aiops.monitor.model.entity.AiHypothesis;
 import com.aiops.monitor.model.entity.AiInvestigation;
+import com.aiops.monitor.model.entity.AiObservation;
 import com.aiops.monitor.model.entity.AiReportSnapshot;
 import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.repository.AiActionPlanRepository;
@@ -228,6 +232,78 @@ public class InvestigationController {
         return ResponseEntity.ok(result);
     }
 
+    @PostMapping("/{id}/observations")
+    public ResponseEntity<Map<String, Object>> createObservation(@PathVariable Long id,
+                                                                 @Valid @RequestBody AiObservationCreateRequest request,
+                                                                 Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        AiInvestigation investigation = requireInvestigation(id, user.getId());
+        if ("CLOSED".equalsIgnoreCase(investigation.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调查已关闭，不能追加证据");
+        }
+
+        AiObservation observation = new AiObservation();
+        observation.setInvestigationId(id);
+        observation.setUserId(user.getId());
+        observation.setType(resolveObservationType(request.getType()));
+        observation.setSourceRef(normalize(request.getSourceRef()));
+        observation.setHostname(normalize(request.getHostname()));
+        observation.setMetricName(normalize(request.getMetricName()));
+        observation.setMetricValue(request.getMetricValue());
+        observation.setObservedAt(request.getObservedAt() == null ? LocalDateTime.now() : request.getObservedAt());
+        observation.setConfidence(request.getConfidence());
+        observation.setPayloadJson(normalize(request.getPayloadJson()));
+        observation.setCreatedAt(LocalDateTime.now());
+        AiObservation saved = aiObservationRepository.save(observation);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", saved.getId());
+        result.put("type", saved.getType());
+        result.put("metricName", saved.getMetricName());
+        result.put("metricValue", saved.getMetricValue());
+        result.put("observedAt", saved.getObservedAt());
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/hypotheses")
+    public ResponseEntity<Map<String, Object>> createHypothesis(@PathVariable Long id,
+                                                                @Valid @RequestBody AiHypothesisCreateRequest request,
+                                                                Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        AiInvestigation investigation = requireInvestigation(id, user.getId());
+        if ("CLOSED".equalsIgnoreCase(investigation.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调查已关闭，不能新增假设");
+        }
+
+        int nextRank = aiHypothesisRepository.findByInvestigationIdAndUserIdOrderByRankOrderAsc(id, user.getId())
+                .stream()
+                .map(AiHypothesis::getRankOrder)
+                .filter(x -> x != null && x >= 0)
+                .max(Integer::compareTo)
+                .map(x -> x + 1)
+                .orElse(1);
+
+        AiHypothesis hypothesis = new AiHypothesis();
+        hypothesis.setInvestigationId(id);
+        hypothesis.setUserId(user.getId());
+        hypothesis.setTitle(normalize(request.getTitle()));
+        hypothesis.setReasoning(normalize(request.getReasoning()));
+        hypothesis.setConfidence(request.getConfidence());
+        hypothesis.setRankOrder(request.getRankOrder() == null ? nextRank : Math.max(0, request.getRankOrder()));
+        hypothesis.setStatus(resolveHypothesisStatus(request.getStatus()));
+        hypothesis.setCreatedAt(LocalDateTime.now());
+        hypothesis.setUpdatedAt(LocalDateTime.now());
+        AiHypothesis saved = aiHypothesisRepository.save(hypothesis);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", saved.getId());
+        result.put("title", saved.getTitle());
+        result.put("status", saved.getStatus());
+        result.put("rankOrder", saved.getRankOrder());
+        result.put("confidence", saved.getConfidence());
+        return ResponseEntity.ok(result);
+    }
+
     @PostMapping("/{id}/actions")
     public ResponseEntity<Map<String, Object>> createAction(@PathVariable Long id,
                                                             @Valid @RequestBody AiActionPlanCreateRequest request,
@@ -394,6 +470,32 @@ public class InvestigationController {
         }
         if (!"P1".equals(normalized) && !"P2".equals(normalized) && !"P3".equals(normalized)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "severity 仅支持 P1/P2/P3");
+        }
+        return normalized;
+    }
+
+    private String resolveHypothesisStatus(String statusInput) {
+        String normalized = normalizeUpper(statusInput);
+        if (normalized == null) {
+            return "CANDIDATE";
+        }
+        if (!"CANDIDATE".equals(normalized) && !"CONFIRMED".equals(normalized) && !"REJECTED".equals(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status 仅支持 CANDIDATE/CONFIRMED/REJECTED");
+        }
+        return normalized;
+    }
+
+    private String resolveObservationType(String typeInput) {
+        String normalized = normalizeUpper(typeInput);
+        if (normalized == null) {
+            return "METRIC";
+        }
+        if (!"METRIC".equals(normalized)
+                && !"LOG".equals(normalized)
+                && !"TRACE".equals(normalized)
+                && !"CHANGE".equals(normalized)
+                && !"EVENT".equals(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "type 仅支持 METRIC/LOG/TRACE/CHANGE/EVENT");
         }
         return normalized;
     }

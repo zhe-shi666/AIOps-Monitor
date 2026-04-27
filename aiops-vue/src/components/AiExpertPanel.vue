@@ -105,6 +105,125 @@
             </div>
           </div>
 
+          <div class="observation-head">
+            <span>{{ locale === 'zh' ? '证据观测' : 'Observations' }}</span>
+            <span>{{ observations.length }}</span>
+          </div>
+
+          <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="observation-create">
+            <div class="observation-create-row">
+              <el-select v-model="observationDraft.type" size="small" class="observation-type-select">
+                <el-option label="METRIC" value="METRIC" />
+                <el-option label="LOG" value="LOG" />
+                <el-option label="TRACE" value="TRACE" />
+                <el-option label="CHANGE" value="CHANGE" />
+                <el-option label="EVENT" value="EVENT" />
+              </el-select>
+              <el-input
+                v-model="observationDraft.metricName"
+                size="small"
+                :placeholder="locale === 'zh' ? '指标名，如 cpu.usage' : 'Metric name, e.g. cpu.usage'" />
+            </div>
+            <div class="observation-create-row">
+              <el-input-number
+                v-model="observationDraft.metricValue"
+                size="small"
+                :step="0.1"
+                class="observation-number" />
+              <el-input
+                v-model="observationDraft.hostname"
+                size="small"
+                :placeholder="locale === 'zh' ? '主机名（可选）' : 'Hostname (optional)'" />
+            </div>
+            <el-input
+              v-model="observationDraft.sourceRef"
+              size="small"
+              :placeholder="locale === 'zh' ? '来源引用（日志ID、链路ID、任务ID）' : 'Source ref (log ID, trace ID, job ID)'" />
+            <div class="observation-create-row">
+              <el-input-number
+                v-model="observationDraft.confidence"
+                size="small"
+                :min="0"
+                :max="1"
+                :step="0.05"
+                :precision="2"
+                class="observation-confidence" />
+              <el-button size="small" type="primary" :loading="observationSubmitting" @click="createObservation">
+                {{ locale === 'zh' ? '新增证据' : 'Add Observation' }}
+              </el-button>
+            </div>
+          </div>
+
+          <div class="observation-list">
+            <div v-for="item in observations" :key="item.id" class="observation-item">
+              <div class="observation-item-head">
+                <p class="observation-title">{{ item.type }} · {{ item.metricName || item.sourceRef || 'N/A' }}</p>
+                <div class="action-tags">
+                  <span class="inv-chip">V={{ item.metricValue ?? '-' }}</span>
+                  <span class="inv-chip">C={{ typeof item.confidence === 'number' ? item.confidence.toFixed(2) : '-' }}</span>
+                </div>
+              </div>
+              <p class="observation-meta">
+                {{ formatDateTime(item.observedAt || item.createdAt) }} · {{ item.hostname || 'unknown-host' }}
+              </p>
+            </div>
+            <div v-if="!observations.length" class="ai-empty inline">
+              <p>{{ locale === 'zh' ? '暂无证据观测' : 'No observations yet' }}</p>
+            </div>
+          </div>
+
+          <div class="hypothesis-head">
+            <span>{{ locale === 'zh' ? '根因假设' : 'Hypotheses' }}</span>
+            <span>{{ hypotheses.length }}</span>
+          </div>
+
+          <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="hypothesis-create">
+            <el-input
+              v-model="hypothesisDraft.title"
+              size="small"
+              :placeholder="locale === 'zh' ? '假设标题，例如：JVM 堆外内存泄漏' : 'Hypothesis title, e.g. JVM off-heap memory leak'" />
+            <el-input
+              v-model="hypothesisDraft.reasoning"
+              type="textarea"
+              :rows="2"
+              resize="none"
+              :placeholder="locale === 'zh' ? '推理依据（指标、日志、变更线索）' : 'Reasoning evidence (metrics, logs, changes)'" />
+            <div class="hypothesis-create-row">
+              <el-select v-model="hypothesisDraft.status" size="small" class="hypothesis-select">
+                <el-option label="CANDIDATE" value="CANDIDATE" />
+                <el-option label="CONFIRMED" value="CONFIRMED" />
+                <el-option label="REJECTED" value="REJECTED" />
+              </el-select>
+              <el-input-number
+                v-model="hypothesisDraft.confidence"
+                size="small"
+                :min="0"
+                :max="1"
+                :step="0.05"
+                :precision="2"
+                class="hypothesis-confidence" />
+              <el-button size="small" type="primary" :loading="hypothesisSubmitting" @click="createHypothesis">
+                {{ locale === 'zh' ? '新增假设' : 'Add Hypothesis' }}
+              </el-button>
+            </div>
+          </div>
+
+          <div class="hypothesis-list">
+            <div v-for="item in hypotheses" :key="item.id" class="hypothesis-item">
+              <div class="hypothesis-item-head">
+                <p class="hypothesis-title">#{{ item.rankOrder }} · {{ item.title }}</p>
+                <div class="action-tags">
+                  <span class="inv-chip">{{ item.status || 'CANDIDATE' }}</span>
+                  <span class="inv-chip">C={{ typeof item.confidence === 'number' ? item.confidence.toFixed(2) : '-' }}</span>
+                </div>
+              </div>
+              <p v-if="item.reasoning" class="hypothesis-reasoning">{{ item.reasoning }}</p>
+            </div>
+            <div v-if="!hypotheses.length" class="ai-empty inline">
+              <p>{{ locale === 'zh' ? '暂无根因假设' : 'No hypotheses yet' }}</p>
+            </div>
+          </div>
+
           <div class="action-head">
             <span>{{ locale === 'zh' ? '动作计划' : 'Action Plans' }}</span>
             <span>{{ actionPlans.length }}</span>
@@ -243,6 +362,8 @@ import {
   approveInvestigationAction,
   closeInvestigation,
   createInvestigationAction,
+  createInvestigationHypothesis,
+  createInvestigationObservation,
   createInvestigationSnapshot,
   executeInvestigationAction,
   getInvestigationDetail,
@@ -264,6 +385,8 @@ const timelineEvents = ref([])
 const loadingInvestigations = ref(false)
 const loadingDetail = ref(false)
 const closingInvestigation = ref(false)
+const observationSubmitting = ref(false)
+const hypothesisSubmitting = ref(false)
 const actionSubmitting = ref(false)
 const actionOperatingId = ref(null)
 const actionOperatingType = ref('')
@@ -275,6 +398,22 @@ let stompClient = null
 let reconnectTimer = null
 let reportCounter = 0
 let investigationRefreshTimer = null
+
+const observationDraft = reactive({
+  type: 'METRIC',
+  metricName: '',
+  metricValue: null,
+  hostname: '',
+  sourceRef: '',
+  confidence: 0.8
+})
+
+const hypothesisDraft = reactive({
+  title: '',
+  reasoning: '',
+  confidence: 0.7,
+  status: 'CANDIDATE'
+})
 
 const actionDraft = reactive({
   title: '',
@@ -288,6 +427,8 @@ const selectedSnapshotHtml = computed(() => {
   return markdown ? marked.parse(markdown) : ''
 })
 
+const observations = computed(() => selectedDetail.value?.observations || [])
+const hypotheses = computed(() => selectedDetail.value?.hypotheses || [])
 const actionPlans = computed(() => selectedDetail.value?.actionPlans || [])
 const filteredTimelineEvents = computed(() => {
   if (timelineCategory.value === 'ALL') return timelineEvents.value
@@ -439,6 +580,68 @@ async function closeCurrentInvestigation() {
     ElMessage.error(locale.value === 'zh' ? '关闭调查失败' : 'Failed to close investigation')
   } finally {
     closingInvestigation.value = false
+  }
+}
+
+async function createObservation() {
+  const investigationId = selectedDetail.value?.investigation?.id
+  if (!investigationId) return
+  if (!observationDraft.metricName.trim() && !observationDraft.sourceRef.trim()) {
+    ElMessage.warning(locale.value === 'zh' ? '请至少填写指标名或来源引用' : 'Please provide metric name or source ref')
+    return
+  }
+  observationSubmitting.value = true
+  try {
+    await createInvestigationObservation(investigationId, {
+      type: observationDraft.type,
+      metricName: observationDraft.metricName.trim() || undefined,
+      metricValue: typeof observationDraft.metricValue === 'number' ? observationDraft.metricValue : undefined,
+      hostname: observationDraft.hostname.trim() || undefined,
+      sourceRef: observationDraft.sourceRef.trim() || undefined,
+      confidence: typeof observationDraft.confidence === 'number' ? observationDraft.confidence : undefined
+    })
+    observationDraft.type = 'METRIC'
+    observationDraft.metricName = ''
+    observationDraft.metricValue = null
+    observationDraft.hostname = ''
+    observationDraft.sourceRef = ''
+    observationDraft.confidence = 0.8
+    ElMessage.success(locale.value === 'zh' ? '证据观测已写入' : 'Observation added')
+    await loadInvestigationDetail(investigationId, true)
+    await loadInvestigationTimeline(investigationId, true)
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? '新增证据失败' : 'Failed to add observation')
+  } finally {
+    observationSubmitting.value = false
+  }
+}
+
+async function createHypothesis() {
+  const investigationId = selectedDetail.value?.investigation?.id
+  if (!investigationId) return
+  if (!hypothesisDraft.title.trim()) {
+    ElMessage.warning(locale.value === 'zh' ? '请填写假设标题' : 'Please input hypothesis title')
+    return
+  }
+  hypothesisSubmitting.value = true
+  try {
+    await createInvestigationHypothesis(investigationId, {
+      title: hypothesisDraft.title.trim(),
+      reasoning: hypothesisDraft.reasoning.trim() || undefined,
+      confidence: typeof hypothesisDraft.confidence === 'number' ? hypothesisDraft.confidence : undefined,
+      status: hypothesisDraft.status
+    })
+    hypothesisDraft.title = ''
+    hypothesisDraft.reasoning = ''
+    hypothesisDraft.confidence = 0.7
+    hypothesisDraft.status = 'CANDIDATE'
+    ElMessage.success(locale.value === 'zh' ? '根因假设已创建' : 'Hypothesis created')
+    await loadInvestigationDetail(investigationId, true)
+    await loadInvestigationTimeline(investigationId, true)
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? '创建假设失败' : 'Failed to create hypothesis')
+  } finally {
+    hypothesisSubmitting.value = false
   }
 }
 
@@ -766,6 +969,145 @@ onUnmounted(() => {
 .snapshot-editor-row {
   display: flex;
   justify-content: flex-end;
+}
+
+.observation-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.observation-create {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.observation-create-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.observation-type-select {
+  width: 140px;
+}
+
+.observation-number,
+.observation-confidence {
+  width: 120px;
+}
+
+.observation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 170px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.observation-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.observation-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.observation-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-1);
+}
+
+.observation-meta {
+  margin: 0;
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.hypothesis-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.hypothesis-create {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hypothesis-create-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hypothesis-select {
+  width: 140px;
+}
+
+.hypothesis-confidence {
+  flex: 1;
+  min-width: 110px;
+}
+
+.hypothesis-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 170px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.hypothesis-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hypothesis-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hypothesis-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-1);
+}
+
+.hypothesis-reasoning {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: pre-wrap;
 }
 
 .action-head {
