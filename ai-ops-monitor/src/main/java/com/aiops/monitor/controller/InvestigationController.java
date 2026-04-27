@@ -22,7 +22,10 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -101,6 +104,110 @@ public class InvestigationController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/{id}/timeline")
+    public ResponseEntity<List<Map<String, Object>>> timeline(@PathVariable Long id, Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        AiInvestigation investigation = aiInvestigationRepository.findByIdAndUserId(id, user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "调查不存在"));
+
+        List<TimelineEvent> events = new ArrayList<>();
+        events.add(new TimelineEvent(
+                nonNullTime(investigation.getCreatedAt(), investigation.getStartedAt()),
+                "INVESTIGATION",
+                "Investigation Created",
+                investigation.getTitle(),
+                investigation.getId(),
+                Map.of(
+                        "status", investigation.getStatus(),
+                        "severity", investigation.getSeverity(),
+                        "triggerSource", investigation.getTriggerSource()
+                )
+        ));
+        if (investigation.getClosedAt() != null) {
+            events.add(new TimelineEvent(
+                    investigation.getClosedAt(),
+                    "INVESTIGATION",
+                    "Investigation Closed",
+                    investigation.getTitle(),
+                    investigation.getId(),
+                    Map.of(
+                            "status", "CLOSED",
+                            "severity", investigation.getSeverity()
+                    )
+            ));
+        }
+
+        aiObservationRepository.findByInvestigationIdAndUserIdOrderByObservedAtAsc(id, user.getId())
+                .forEach(obs -> events.add(new TimelineEvent(
+                        nonNullTime(obs.getObservedAt(), obs.getCreatedAt()),
+                        "OBSERVATION",
+                        "Observation: " + safe(obs.getType(), "METRIC"),
+                        safe(obs.getMetricName(), safe(obs.getSourceRef(), "N/A")),
+                        obs.getId(),
+                        Map.of(
+                                "hostname", safe(obs.getHostname(), "unknown-host"),
+                                "metricValue", obs.getMetricValue() == null ? "-" : obs.getMetricValue(),
+                                "confidence", obs.getConfidence() == null ? "-" : obs.getConfidence()
+                        )
+                )));
+
+        aiHypothesisRepository.findByInvestigationIdAndUserIdOrderByRankOrderAsc(id, user.getId())
+                .forEach(h -> events.add(new TimelineEvent(
+                        nonNullTime(h.getUpdatedAt(), h.getCreatedAt()),
+                        "HYPOTHESIS",
+                        "Hypothesis #" + h.getRankOrder(),
+                        h.getTitle(),
+                        h.getId(),
+                        Map.of(
+                                "status", safe(h.getStatus(), "CANDIDATE"),
+                                "confidence", h.getConfidence() == null ? "-" : h.getConfidence()
+                        )
+                )));
+
+        aiActionPlanRepository.findByInvestigationIdAndUserIdOrderByCreatedAtAsc(id, user.getId())
+                .forEach(action -> events.add(new TimelineEvent(
+                        nonNullTime(action.getUpdatedAt(), action.getCreatedAt()),
+                        "ACTION_PLAN",
+                        safe(action.getActionType(), "ACTION"),
+                        action.getTitle(),
+                        action.getId(),
+                        Map.of(
+                                "status", safe(action.getStatus(), "PROPOSED"),
+                                "riskLevel", safe(action.getRiskLevel(), "MEDIUM"),
+                                "requiresApproval", action.isRequiresApproval()
+                        )
+                )));
+
+        aiActionRunRepository.findByInvestigationIdAndUserIdOrderByCreatedAtAsc(id, user.getId())
+                .forEach(run -> events.add(new TimelineEvent(
+                        nonNullTime(run.getStartedAt(), run.getCreatedAt()),
+                        "ACTION_RUN",
+                        "Execution: " + safe(run.getStatus(), "PENDING"),
+                        safe(run.getExecutor(), "unknown-executor"),
+                        run.getId(),
+                        Map.of(
+                                "executionMode", safe(run.getExecutionMode(), "MANUAL"),
+                                "endedAt", run.getEndedAt()
+                        )
+                )));
+
+        aiReportSnapshotRepository.findByInvestigationIdAndUserIdOrderByVersionNoDesc(id, user.getId())
+                .forEach(snapshot -> events.add(new TimelineEvent(
+                        snapshot.getCreatedAt(),
+                        "REPORT_SNAPSHOT",
+                        "Report Snapshot v" + snapshot.getVersionNo(),
+                        safe(snapshot.getFormat(), "MARKDOWN"),
+                        snapshot.getId(),
+                        Map.of("createdBy", safe(snapshot.getCreatedBy(), "AI"))
+                )));
+
+        List<Map<String, Object>> timeline = events.stream()
+                .sorted(Comparator.comparing(TimelineEvent::time, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+                .map(this::toTimelineMap)
+                .toList();
+        return ResponseEntity.ok(timeline);
+    }
+
     @PostMapping("/{id}/close")
     public ResponseEntity<Map<String, Object>> close(@PathVariable Long id, Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
@@ -140,5 +247,36 @@ public class InvestigationController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "severity 仅支持 P1/P2/P3");
         }
         return normalized;
+    }
+
+    private LocalDateTime nonNullTime(LocalDateTime first, LocalDateTime second) {
+        if (first != null) return first;
+        if (second != null) return second;
+        return LocalDateTime.now();
+    }
+
+    private String safe(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private Map<String, Object> toTimelineMap(TimelineEvent event) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("time", event.time());
+        map.put("category", event.category());
+        map.put("title", event.title());
+        map.put("detail", event.detail());
+        map.put("refId", event.refId());
+        map.put("metadata", event.metadata());
+        return map;
+    }
+
+    private record TimelineEvent(
+            LocalDateTime time,
+            String category,
+            String title,
+            String detail,
+            Long refId,
+            Map<String, Object> metadata
+    ) {
     }
 }
