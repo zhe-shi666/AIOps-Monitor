@@ -3,6 +3,10 @@
               bg-slate-900/90 backdrop-blur-sm border-b border-slate-700">
     <span class="text-slate-100 font-semibold text-sm">🛡️ AIOps Monitor</span>
     <div class="flex items-center gap-4">
+      <router-link to="/targets"
+        class="text-xs text-cyan-400 hover:text-cyan-300 font-medium">
+        监控目标
+      </router-link>
       <router-link v-if="auth.isAdmin" to="/admin"
         class="text-xs text-purple-400 hover:text-purple-300 font-medium">
         管理后台
