@@ -85,6 +85,26 @@
             <p>{{ locale === 'zh' ? '暂无报告快照' : 'No report snapshot' }}</p>
           </div>
 
+          <div class="snapshot-editor">
+            <el-input
+              v-model="snapshotDraft"
+              type="textarea"
+              :rows="3"
+              resize="none"
+              :placeholder="locale === 'zh' ? '可编辑当前报告，保存为新快照版本...' : 'Edit report and save as a new snapshot version...'" />
+            <div class="snapshot-editor-row">
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :disabled="!snapshotDraft.trim()"
+                :loading="snapshotSaving"
+                @click="saveSnapshot">
+                {{ locale === 'zh' ? '保存快照' : 'Save Snapshot' }}
+              </el-button>
+            </div>
+          </div>
+
           <div class="action-head">
             <span>{{ locale === 'zh' ? '动作计划' : 'Action Plans' }}</span>
             <span>{{ actionPlans.length }}</span>
@@ -141,7 +161,7 @@
                   size="small"
                   type="success"
                   plain
-                  :disabled="action.status === 'EXECUTED' || action.status === 'FAILED' || (action.requiresApproval && action.status !== 'APPROVED')"
+                  :disabled="action.status === 'EXECUTED' || (action.requiresApproval && action.status !== 'APPROVED' && action.status !== 'FAILED')"
                   :loading="actionOperatingId === action.id && actionOperatingType === 'execute'"
                   @click="executeAction(action)">
                   {{ locale === 'zh' ? '执行' : 'Execute' }}
@@ -155,17 +175,28 @@
 
           <div class="timeline-head">
             <span>{{ locale === 'zh' ? '调查时间线' : 'Timeline' }}</span>
-            <span>{{ timelineEvents.length }}</span>
+            <div class="timeline-filter">
+              <el-select v-model="timelineCategory" size="small" class="timeline-select">
+                <el-option value="ALL" :label="locale === 'zh' ? '全部' : 'All'" />
+                <el-option value="INVESTIGATION" label="INVESTIGATION" />
+                <el-option value="OBSERVATION" label="OBSERVATION" />
+                <el-option value="HYPOTHESIS" label="HYPOTHESIS" />
+                <el-option value="ACTION_PLAN" label="ACTION_PLAN" />
+                <el-option value="ACTION_RUN" label="ACTION_RUN" />
+                <el-option value="REPORT_SNAPSHOT" label="REPORT_SNAPSHOT" />
+              </el-select>
+              <span>{{ filteredTimelineEvents.length }}</span>
+            </div>
           </div>
 
           <div class="timeline-list">
-            <div v-for="event in timelineEvents" :key="`${event.category}-${event.refId}-${event.time}`" class="timeline-item">
+            <div v-for="event in filteredTimelineEvents" :key="`${event.category}-${event.refId}-${event.time}`" class="timeline-item">
               <p class="timeline-time">{{ formatDateTime(event.time) }}</p>
               <p class="timeline-title">{{ event.title }}</p>
               <p class="timeline-detail">{{ event.detail }}</p>
               <p v-if="formatTimelineMeta(event)" class="timeline-meta">{{ formatTimelineMeta(event) }}</p>
             </div>
-            <div v-if="!timelineEvents.length && !loadingDetail" class="ai-empty inline">
+            <div v-if="!filteredTimelineEvents.length && !loadingDetail" class="ai-empty inline">
               <p>{{ locale === 'zh' ? '暂无时间线事件' : 'No timeline events' }}</p>
             </div>
           </div>
@@ -212,6 +243,7 @@ import {
   approveInvestigationAction,
   closeInvestigation,
   createInvestigationAction,
+  createInvestigationSnapshot,
   executeInvestigationAction,
   getInvestigationDetail,
   getInvestigations,
@@ -235,6 +267,9 @@ const closingInvestigation = ref(false)
 const actionSubmitting = ref(false)
 const actionOperatingId = ref(null)
 const actionOperatingType = ref('')
+const snapshotSaving = ref(false)
+const snapshotDraft = ref('')
+const timelineCategory = ref('ALL')
 
 let stompClient = null
 let reconnectTimer = null
@@ -254,6 +289,10 @@ const selectedSnapshotHtml = computed(() => {
 })
 
 const actionPlans = computed(() => selectedDetail.value?.actionPlans || [])
+const filteredTimelineEvents = computed(() => {
+  if (timelineCategory.value === 'ALL') return timelineEvents.value
+  return timelineEvents.value.filter((x) => x?.category === timelineCategory.value)
+})
 
 function clearReports() {
   reports.value = []
@@ -359,6 +398,9 @@ async function loadInvestigationDetail(id, silent = false) {
     const { data } = await getInvestigationDetail(id)
     if (selectedInvestigationId.value === id) {
       selectedDetail.value = data
+      if (!snapshotDraft.value || !silent) {
+        snapshotDraft.value = data?.latestSnapshot?.reportMarkdown || ''
+      }
     }
   } catch (_e) {
     if (!silent) {
@@ -467,6 +509,27 @@ async function executeAction(action) {
   } finally {
     actionOperatingId.value = null
     actionOperatingType.value = ''
+  }
+}
+
+async function saveSnapshot() {
+  const investigationId = selectedDetail.value?.investigation?.id
+  const markdown = snapshotDraft.value.trim()
+  if (!investigationId || !markdown) return
+  snapshotSaving.value = true
+  try {
+    await createInvestigationSnapshot(investigationId, {
+      format: 'MARKDOWN',
+      reportMarkdown: markdown,
+      createdBy: 'USER'
+    })
+    ElMessage.success(locale.value === 'zh' ? '快照已保存' : 'Snapshot saved')
+    await loadInvestigationDetail(investigationId, true)
+    await loadInvestigationTimeline(investigationId, true)
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? '保存快照失败' : 'Failed to save snapshot')
+  } finally {
+    snapshotSaving.value = false
   }
 }
 
@@ -690,6 +753,21 @@ onUnmounted(() => {
   color: inherit;
 }
 
+.snapshot-editor {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.snapshot-editor-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .action-head {
   display: flex;
   justify-content: space-between;
@@ -784,8 +862,19 @@ onUnmounted(() => {
 .timeline-head {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 12px;
   color: var(--text-3);
+}
+
+.timeline-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-select {
+  width: 150px;
 }
 
 .timeline-list {

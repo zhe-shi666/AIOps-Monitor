@@ -7,3 +7,4 @@ export const closeInvestigation = (id) => api.post(`/api/investigations/${id}/cl
 export const createInvestigationAction = (id, payload) => api.post(`/api/investigations/${id}/actions`, payload)
 export const approveInvestigationAction = (id, actionId) => api.post(`/api/investigations/${id}/actions/${actionId}/approve`)
 export const executeInvestigationAction = (id, actionId, payload) => api.post(`/api/investigations/${id}/actions/${actionId}/execute`, payload || {})
+export const createInvestigationSnapshot = (id, payload) => api.post(`/api/investigations/${id}/snapshots`, payload)

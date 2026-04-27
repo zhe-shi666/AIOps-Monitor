@@ -3,9 +3,11 @@ package com.aiops.monitor.controller;
 import com.aiops.monitor.model.dto.AiActionExecuteRequest;
 import com.aiops.monitor.model.dto.AiActionPlanCreateRequest;
 import com.aiops.monitor.model.dto.AiInvestigationCreateRequest;
+import com.aiops.monitor.model.dto.AiReportSnapshotCreateRequest;
 import com.aiops.monitor.model.entity.AiActionPlan;
 import com.aiops.monitor.model.entity.AiActionRun;
 import com.aiops.monitor.model.entity.AiInvestigation;
+import com.aiops.monitor.model.entity.AiReportSnapshot;
 import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.repository.AiActionPlanRepository;
 import com.aiops.monitor.repository.AiActionRunRepository;
@@ -295,7 +297,13 @@ public class InvestigationController {
         AiActionPlan actionPlan = aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
 
-        if (actionPlan.isRequiresApproval() && !"APPROVED".equalsIgnoreCase(actionPlan.getStatus())) {
+        if ("EXECUTED".equalsIgnoreCase(actionPlan.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "动作已执行，不能重复执行");
+        }
+
+        if (actionPlan.isRequiresApproval()
+                && !"APPROVED".equalsIgnoreCase(actionPlan.getStatus())
+                && !"FAILED".equalsIgnoreCase(actionPlan.getStatus())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "动作未审批，不能执行");
         }
 
@@ -325,6 +333,44 @@ public class InvestigationController {
         result.put("actionStatus", actionPlan.getStatus());
         result.put("runId", savedRun.getId());
         result.put("runStatus", savedRun.getStatus());
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/snapshots")
+    public ResponseEntity<Map<String, Object>> createSnapshot(@PathVariable Long id,
+                                                              @Valid @RequestBody AiReportSnapshotCreateRequest request,
+                                                              Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        requireInvestigation(id, user.getId());
+
+        String markdown = normalize(request.getReportMarkdown());
+        String reportJson = normalize(request.getReportJson());
+        if (markdown == null && reportJson == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "reportMarkdown 或 reportJson 至少传一个");
+        }
+
+        int nextVersion = aiReportSnapshotRepository
+                .findFirstByInvestigationIdAndUserIdOrderByVersionNoDesc(id, user.getId())
+                .map(snapshot -> snapshot.getVersionNo() + 1)
+                .orElse(1);
+
+        AiReportSnapshot snapshot = new AiReportSnapshot();
+        snapshot.setInvestigationId(id);
+        snapshot.setUserId(user.getId());
+        snapshot.setVersionNo(nextVersion);
+        snapshot.setFormat(resolveSnapshotFormat(request.getFormat(), markdown, reportJson));
+        snapshot.setReportMarkdown(markdown);
+        snapshot.setReportJson(reportJson);
+        snapshot.setCreatedBy(normalize(request.getCreatedBy()) == null ? user.getUsername() : normalize(request.getCreatedBy()));
+        snapshot.setCreatedAt(LocalDateTime.now());
+        AiReportSnapshot saved = aiReportSnapshotRepository.save(snapshot);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", saved.getId());
+        result.put("versionNo", saved.getVersionNo());
+        result.put("format", saved.getFormat());
+        result.put("createdBy", saved.getCreatedBy());
+        result.put("createdAt", saved.getCreatedAt());
         return ResponseEntity.ok(result);
     }
 
@@ -381,6 +427,27 @@ public class InvestigationController {
         }
         if (!"MANUAL".equals(normalized) && !"AUTO".equals(normalized)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "executionMode 仅支持 MANUAL/AUTO");
+        }
+        return normalized;
+    }
+
+    private String resolveSnapshotFormat(String input, String markdown, String reportJson) {
+        String normalized = normalizeUpper(input);
+        if (normalized == null) {
+            if (markdown != null && reportJson != null) return "BOTH";
+            return markdown != null ? "MARKDOWN" : "JSON";
+        }
+        if (!"MARKDOWN".equals(normalized) && !"JSON".equals(normalized) && !"BOTH".equals(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "format 仅支持 MARKDOWN/JSON/BOTH");
+        }
+        if ("MARKDOWN".equals(normalized) && markdown == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "format=MARKDOWN 时 reportMarkdown 不能为空");
+        }
+        if ("JSON".equals(normalized) && reportJson == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "format=JSON 时 reportJson 不能为空");
+        }
+        if ("BOTH".equals(normalized) && (markdown == null || reportJson == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "format=BOTH 时 reportMarkdown 和 reportJson 都不能为空");
         }
         return normalized;
     }
