@@ -1,7 +1,5 @@
 package com.aiops.monitor.collector;
 
-import io.micrometer.core.instrument.Gauge;
-import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 import oshi.SystemInfo;
 import oshi.hardware.CentralProcessor;
@@ -42,5 +40,19 @@ public class SystemHardwareCollector {
      */
     public long getSystemUptime() {
         return si.getOperatingSystem().getSystemUptime();
+    }
+
+    /**
+     * 获取 CPU 型号名称
+     */
+    public String getCpuModel() {
+        return hal.getProcessor().getProcessorIdentifier().getName();
+    }
+
+    /**
+     * 获取总内存（字节）
+     */
+    public long getTotalMemoryBytes() {
+        return hal.getMemory().getTotal();
     }
 }

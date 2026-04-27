@@ -22,6 +22,14 @@ spring:
       enabled: true
   jpa:
     open-in-view: false
+    hibernate:
+      ddl-auto: update
+
+# --- JWT 配置 ---
+jwt:
+  # 至少 32 字符的随机字符串，生产环境请替换为强随机值
+  secret: aiops-monitor-jwt-secret-key-2026-change-in-production
+  expiration: 86400000  # 24小时（毫秒）
 
 # --- 监控与端点配置 (共有) ---
 management:
@@ -41,3 +49,8 @@ management:
   metrics:
     tags:
       application: ai-ops-monitor
+
+monitor:
+  threshold:
+    cpu: 70
+    memory: 90

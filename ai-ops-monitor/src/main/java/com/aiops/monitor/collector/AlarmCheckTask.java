@@ -47,9 +47,11 @@ public class AlarmCheckTask {
     @Autowired
     private Environment environment;
 
-    // 设定告警阈值
-    private static final double CPU_THRESHOLD = 70.0;  // CPU 超过 70% 告警
-    private static final double MEM_THRESHOLD = 90.0;  // 内存超过 90% 告警
+    @Value("${monitor.threshold.cpu:70}")
+    private double cpuThreshold;
+
+    @Value("${monitor.threshold.memory:90}")
+    private double memoryThreshold;
 
     @Scheduled(fixedRate = 5000) // 每 5 秒执行一次检测
     public void checkSystemHealth() {
@@ -57,13 +59,13 @@ public class AlarmCheckTask {
         double memUsage = hardwareCollector.getMemoryUsage();
 
         // 1. 检查 CPU
-        if (cpuUsage > CPU_THRESHOLD) {
-            recordIncident("CPU", cpuUsage, CPU_THRESHOLD);
+        if (cpuUsage > cpuThreshold) {
+            recordIncident("CPU", cpuUsage, cpuThreshold);
         }
 
         // 2. 检查 内存
-        if (memUsage > MEM_THRESHOLD) {
-            recordIncident("MEMORY", memUsage, MEM_THRESHOLD);
+        if (memUsage > memoryThreshold) {
+            recordIncident("MEMORY", memUsage, memoryThreshold);
         }
 
         log.info("【巡检中】CPU: {}%, 内存: {}%",
