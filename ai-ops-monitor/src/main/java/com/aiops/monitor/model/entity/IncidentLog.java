@@ -30,6 +30,9 @@ public class IncidentLog {
     @Column(name = "target_id")
     private Long targetId;
 
+    @Column(length = 10)
+    private String severity = "P2";
+
     @Column(length = 20)
     private String status = "OPEN";
 
@@ -38,6 +41,15 @@ public class IncidentLog {
 
     @Column(name = "resolved_at")
     private LocalDateTime resolvedAt;
+
+    @Column(name = "escalation_level")
+    private Integer escalationLevel = 0;
+
+    @Column(name = "last_notified_at")
+    private LocalDateTime lastNotifiedAt;
+
+    @Column(name = "next_notify_at")
+    private LocalDateTime nextNotifyAt;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();

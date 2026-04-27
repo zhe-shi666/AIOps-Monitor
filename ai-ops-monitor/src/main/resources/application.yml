@@ -60,3 +60,8 @@ monitor:
     process-count: 400
     consecutive-breach-count: 2
     silence-seconds: 180
+  escalation:
+    p1-intervals: 1,3,5,10
+    p2-intervals: 5,15,30
+    p3-intervals: 15,30,60
+    scan-ms: 30000

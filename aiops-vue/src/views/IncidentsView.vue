@@ -35,6 +35,11 @@
           :header-cell-style="{ background: '#1e293b', color: '#94a3b8' }"
           :row-style="{ background: '#0f172a', color: '#e2e8f0' }">
           <el-table-column prop="id" label="ID" width="90" />
+          <el-table-column label="级别" width="100">
+            <template #default="{ row }">
+              <el-tag :type="severityType(row.severity)" size="small">{{ row.severity || 'P2' }}</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="metricName" label="指标" width="140" />
           <el-table-column label="值/阈值" width="160">
             <template #default="{ row }">
@@ -46,6 +51,14 @@
           <el-table-column label="状态" width="150">
             <template #default="{ row }">
               <el-tag :type="statusType(row.status)" size="small">{{ row.status || 'OPEN' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="升级" width="170">
+            <template #default="{ row }">
+              <div class="text-xs leading-5">
+                <div>L{{ row.escalationLevel ?? 0 }}</div>
+                <div class="text-slate-400">下次：{{ formatDate(row.nextNotifyAt) }}</div>
+              </div>
             </template>
           </el-table-column>
           <el-table-column label="发生时间" width="180">
@@ -180,6 +193,9 @@ async function setStatus(row, status) {
   try {
     const { data } = await updateIncidentStatus(row.id, status)
     row.status = data.status
+    row.severity = data.severity || row.severity
+    row.escalationLevel = data.escalationLevel
+    row.nextNotifyAt = data.nextNotifyAt
     row.acknowledgedAt = data.acknowledgedAt
     row.resolvedAt = data.resolvedAt
     ElMessage.success('状态已更新')
@@ -219,6 +235,12 @@ function statusType(status) {
   if (status === 'RESOLVED') return 'success'
   if (status === 'ACKNOWLEDGED') return 'warning'
   return 'danger'
+}
+
+function severityType(severity) {
+  if (severity === 'P1') return 'danger'
+  if (severity === 'P2') return 'warning'
+  return 'info'
 }
 
 function formatDate(value) {

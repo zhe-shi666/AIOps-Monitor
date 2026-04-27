@@ -3,6 +3,7 @@ package com.aiops.monitor.controller;
 import com.aiops.monitor.model.dto.AgentHeartbeatRequest;
 import com.aiops.monitor.model.dto.AgentRegisterRequest;
 import com.aiops.monitor.model.dto.MetricDTO;
+import com.aiops.monitor.model.entity.AlertEscalationPolicy;
 import com.aiops.monitor.model.entity.AlertThresholdConfig;
 import com.aiops.monitor.model.entity.IncidentLog;
 import com.aiops.monitor.model.entity.MonitorTarget;
@@ -10,6 +11,7 @@ import com.aiops.monitor.model.entity.SystemMetricsHistory;
 import com.aiops.monitor.repository.IncidentLogRepository;
 import com.aiops.monitor.repository.MonitorTargetRepository;
 import com.aiops.monitor.repository.SystemMetricsRepository;
+import com.aiops.monitor.service.EscalationPolicyService;
 import com.aiops.monitor.service.MetricsPublisher;
 import com.aiops.monitor.service.NotificationDispatcherService;
 import com.aiops.monitor.service.ThresholdConfigService;
@@ -36,6 +38,7 @@ public class AgentIngestController {
     private final IncidentLogRepository incidentLogRepository;
     private final MetricsPublisher metricsPublisher;
     private final ThresholdConfigService thresholdConfigService;
+    private final EscalationPolicyService escalationPolicyService;
     private final NotificationDispatcherService notificationDispatcherService;
     private final Map<String, LocalDateTime> lastAlertAt = new ConcurrentHashMap<>();
     private final Map<String, Integer> breachCounter = new ConcurrentHashMap<>();
@@ -98,17 +101,19 @@ public class AgentIngestController {
         sendMetric("PROCESS_COUNT", request.getProcessCount() == null ? null : request.getProcessCount().doubleValue(), request, target);
 
         AlertThresholdConfig threshold = thresholdConfigService.getOrCreateByUserId(target.getUserId());
+        AlertEscalationPolicy escalationPolicy = escalationPolicyService.getOrCreateByUserId(target.getUserId());
         evaluateAndRecordIncident(target, "CPU", request.getCpuUsage(), threshold.getCpuThreshold(),
-                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds());
+                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds(), escalationPolicy);
         evaluateAndRecordIncident(target, "MEMORY", request.getMemUsage(), threshold.getMemoryThreshold(),
-                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds());
+                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds(), escalationPolicy);
         evaluateAndRecordIncident(target, "DISK", request.getDiskUsage(), threshold.getDiskThreshold(),
-                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds());
+                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds(), escalationPolicy);
         evaluateAndRecordIncident(target, "PROCESS_COUNT",
                 request.getProcessCount() == null ? null : request.getProcessCount().doubleValue(),
                 threshold.getProcessCountThreshold(),
                 threshold.getConsecutiveBreachCount(),
-                threshold.getSilenceSeconds());
+                threshold.getSilenceSeconds(),
+                escalationPolicy);
 
         return ResponseEntity.ok(Map.of(
                 "targetId", target.getId(),
@@ -155,7 +160,8 @@ public class AgentIngestController {
                                            Double value,
                                            double threshold,
                                            Integer consecutiveBreachCount,
-                                           Integer silenceSeconds) {
+                                           Integer silenceSeconds,
+                                           AlertEscalationPolicy escalationPolicy) {
         String alertKey = target.getId() + ":" + metricName;
         if (value == null || value <= threshold) {
             breachCounter.remove(alertKey);
@@ -177,12 +183,15 @@ public class AgentIngestController {
 
         breachCounter.put(alertKey, 0);
         lastAlertAt.put(alertKey, now);
+        String severity = calculateSeverity(value, threshold);
+        Integer firstIntervalMinutes = escalationPolicyService.getIntervalMinutes(escalationPolicy, severity, 0);
 
         IncidentLog log = new IncidentLog();
         log.setMetricName(metricName);
         log.setMetricValue(value);
         log.setThreshold(threshold);
-        log.setMessage(String.format("%s(%s) %s 连续%d次超阈值: %.2f > %.2f",
+        log.setMessage(String.format("[%s] %s(%s) %s 连续%d次超阈值: %.2f > %.2f",
+                severity,
                 target.getName(),
                 target.getHostname() == null ? "unknown" : target.getHostname(),
                 metricName,
@@ -192,9 +201,27 @@ public class AgentIngestController {
         log.setHostname(target.getHostname());
         log.setUserId(target.getUserId());
         log.setTargetId(target.getId());
+        log.setSeverity(severity);
         log.setStatus("OPEN");
+        log.setEscalationLevel(0);
+        log.setLastNotifiedAt(now);
+        log.setNextNotifyAt(firstIntervalMinutes == null ? null : now.plusMinutes(firstIntervalMinutes));
         log.setCreatedAt(now);
         IncidentLog saved = incidentLogRepository.save(log);
         notificationDispatcherService.dispatchIncidentOpened(saved);
+    }
+
+    private String calculateSeverity(double value, double threshold) {
+        if (threshold <= 0) {
+            return "P2";
+        }
+        double ratio = value / threshold;
+        if (ratio >= 1.5d) {
+            return "P1";
+        }
+        if (ratio >= 1.2d) {
+            return "P2";
+        }
+        return "P3";
     }
 }

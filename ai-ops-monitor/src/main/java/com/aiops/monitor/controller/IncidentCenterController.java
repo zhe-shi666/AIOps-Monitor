@@ -7,6 +7,7 @@ import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.repository.IncidentLogRepository;
 import com.aiops.monitor.repository.NotificationDeliveryLogRepository;
 import com.aiops.monitor.service.CurrentUserService;
+import com.aiops.monitor.service.EscalationPolicyService;
 import com.aiops.monitor.service.NotificationDispatcherService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class IncidentCenterController {
     private final IncidentLogRepository incidentLogRepository;
     private final NotificationDeliveryLogRepository notificationDeliveryLogRepository;
     private final CurrentUserService currentUserService;
+    private final EscalationPolicyService escalationPolicyService;
     private final NotificationDispatcherService notificationDispatcherService;
 
     @GetMapping
@@ -71,24 +73,38 @@ public class IncidentCenterController {
         }
 
         incident.setStatus(status);
+        LocalDateTime now = LocalDateTime.now();
         if ("ACKNOWLEDGED".equals(status)) {
-            incident.setAcknowledgedAt(LocalDateTime.now());
+            incident.setAcknowledgedAt(now);
+            incident.setNextNotifyAt(null);
         }
         if ("RESOLVED".equals(status)) {
             if (incident.getAcknowledgedAt() == null) {
-                incident.setAcknowledgedAt(LocalDateTime.now());
+                incident.setAcknowledgedAt(now);
             }
-            incident.setResolvedAt(LocalDateTime.now());
+            incident.setResolvedAt(now);
+            incident.setNextNotifyAt(null);
         }
         if ("OPEN".equals(status)) {
             incident.setAcknowledgedAt(null);
             incident.setResolvedAt(null);
+            incident.setEscalationLevel(0);
+            incident.setLastNotifiedAt(now);
+            Integer firstInterval = escalationPolicyService.getIntervalMinutes(
+                    escalationPolicyService.getOrCreateByUserId(user.getId()),
+                    incident.getSeverity(),
+                    0
+            );
+            incident.setNextNotifyAt(firstInterval == null ? null : now.plusMinutes(firstInterval));
         }
 
         incidentLogRepository.save(incident);
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("id", incident.getId());
         response.put("status", incident.getStatus());
+        response.put("severity", incident.getSeverity());
+        response.put("escalationLevel", incident.getEscalationLevel());
+        response.put("nextNotifyAt", incident.getNextNotifyAt());
         response.put("acknowledgedAt", incident.getAcknowledgedAt());
         response.put("resolvedAt", incident.getResolvedAt());
 

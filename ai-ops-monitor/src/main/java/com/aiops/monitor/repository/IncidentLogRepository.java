@@ -33,5 +33,14 @@ public interface IncidentLogRepository extends JpaRepository<IncidentLog, Long> 
                                      @Param("keyword") String keyword,
                                      Pageable pageable);
 
+    @Query("""
+            SELECT i FROM IncidentLog i
+            WHERE i.status = 'OPEN'
+              AND i.nextNotifyAt IS NOT NULL
+              AND i.nextNotifyAt <= :now
+            ORDER BY i.nextNotifyAt ASC
+            """)
+    Page<IncidentLog> findEscalationCandidates(@Param("now") LocalDateTime now, Pageable pageable);
+
     Optional<IncidentLog> findByIdAndUserId(Long id, Long userId);
 }

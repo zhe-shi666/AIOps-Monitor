@@ -47,6 +47,11 @@ public class NotificationDispatcherService {
         dispatch("INCIDENT_STATUS_CHANGED", incident);
     }
 
+    @Async("taskExecutor")
+    public void dispatchIncidentEscalated(IncidentLog incident) {
+        dispatch("INCIDENT_ESCALATED", incident);
+    }
+
     private void dispatch(String eventType, IncidentLog incident) {
         if (incident == null || incident.getUserId() == null) {
             return;
@@ -112,12 +117,16 @@ public class NotificationDispatcherService {
         Map<String, Object> incidentData = new LinkedHashMap<>();
         incidentData.put("id", incident.getId());
         incidentData.put("status", incident.getStatus());
+        incidentData.put("severity", incident.getSeverity());
         incidentData.put("metricName", incident.getMetricName());
         incidentData.put("metricValue", incident.getMetricValue());
         incidentData.put("threshold", incident.getThreshold());
         incidentData.put("message", incident.getMessage());
         incidentData.put("hostname", incident.getHostname());
         incidentData.put("targetId", incident.getTargetId());
+        incidentData.put("escalationLevel", incident.getEscalationLevel());
+        incidentData.put("lastNotifiedAt", incident.getLastNotifiedAt());
+        incidentData.put("nextNotifyAt", incident.getNextNotifyAt());
         incidentData.put("createdAt", incident.getCreatedAt());
         incidentData.put("acknowledgedAt", incident.getAcknowledgedAt());
         incidentData.put("resolvedAt", incident.getResolvedAt());

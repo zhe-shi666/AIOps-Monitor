@@ -19,6 +19,10 @@
         class="text-xs text-emerald-400 hover:text-emerald-300 font-medium">
         阈值配置
       </router-link>
+      <router-link to="/settings/escalation"
+        class="text-xs text-fuchsia-300 hover:text-fuchsia-200 font-medium">
+        升级策略
+      </router-link>
       <router-link to="/settings/notifications"
         class="text-xs text-orange-300 hover:text-orange-200 font-medium">
         通知通道
