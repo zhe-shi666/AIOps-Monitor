@@ -51,6 +51,8 @@ management:
       application: ai-ops-monitor
 
 monitor:
+  target:
+    offline-seconds: 90
   threshold:
     cpu: 70
     memory: 90

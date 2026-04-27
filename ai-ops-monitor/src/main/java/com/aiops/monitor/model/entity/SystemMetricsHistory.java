@@ -20,4 +20,10 @@ public class SystemMetricsHistory {
     private java.time.LocalDateTime timestamp = java.time.LocalDateTime.now();
 
     private String hostname;
+
+    @Column(name = "user_id")
+    private Long userId;
+
+    @Column(name = "target_id")
+    private Long targetId;
 }

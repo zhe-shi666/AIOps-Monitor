@@ -2,6 +2,7 @@ package com.aiops.monitor.controller;
 
 import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.repository.IncidentLogRepository;
+import com.aiops.monitor.repository.MonitorTargetRepository;
 import com.aiops.monitor.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -22,6 +23,7 @@ public class AdminUserController {
 
     private final UserRepository userRepository;
     private final IncidentLogRepository incidentLogRepository;
+    private final MonitorTargetRepository monitorTargetRepository;
 
     @GetMapping("/users")
     public ResponseEntity<Page<User>> listUsers(
@@ -38,7 +40,10 @@ public class AdminUserController {
     @GetMapping("/users/{id}")
     public ResponseEntity<?> getUserDetail(@PathVariable Long id) {
         User user = userRepository.findById(id).orElseThrow();
-        return ResponseEntity.ok(Map.of("user", user, "targets", java.util.List.of()));
+        return ResponseEntity.ok(Map.of(
+                "user", user,
+                "targets", monitorTargetRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+        ));
     }
 
     @PutMapping("/users/{id}/role")
@@ -66,11 +71,12 @@ public class AdminUserController {
     @GetMapping("/stats")
     public ResponseEntity<?> getStats() {
         long totalUsers = userRepository.count();
+        long totalTargets = monitorTargetRepository.count();
         LocalDateTime todayStart = LocalDateTime.now().toLocalDate().atStartOfDay();
         long todayIncidents = incidentLogRepository.countByCreatedAtAfter(todayStart);
         return ResponseEntity.ok(Map.of(
                 "totalUsers", totalUsers,
-                "totalTargets", 0,
+                "totalTargets", totalTargets,
                 "todayIncidents", todayIncidents
         ));
     }
