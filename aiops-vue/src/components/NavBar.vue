@@ -19,6 +19,10 @@
         class="text-xs text-emerald-400 hover:text-emerald-300 font-medium">
         阈值配置
       </router-link>
+      <router-link to="/settings/notifications"
+        class="text-xs text-orange-300 hover:text-orange-200 font-medium">
+        通知通道
+      </router-link>
       <router-link v-if="auth.isAdmin" to="/admin"
         class="text-xs text-purple-400 hover:text-purple-300 font-medium">
         管理后台

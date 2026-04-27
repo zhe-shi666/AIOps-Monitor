@@ -11,6 +11,7 @@ import com.aiops.monitor.repository.IncidentLogRepository;
 import com.aiops.monitor.repository.MonitorTargetRepository;
 import com.aiops.monitor.repository.SystemMetricsRepository;
 import com.aiops.monitor.service.MetricsPublisher;
+import com.aiops.monitor.service.NotificationDispatcherService;
 import com.aiops.monitor.service.ThresholdConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class AgentIngestController {
     private final IncidentLogRepository incidentLogRepository;
     private final MetricsPublisher metricsPublisher;
     private final ThresholdConfigService thresholdConfigService;
+    private final NotificationDispatcherService notificationDispatcherService;
     private final Map<String, LocalDateTime> lastAlertAt = new ConcurrentHashMap<>();
 
     @PostMapping("/register")
@@ -170,6 +172,7 @@ public class AgentIngestController {
         log.setTargetId(target.getId());
         log.setStatus("OPEN");
         log.setCreatedAt(now);
-        incidentLogRepository.save(log);
+        IncidentLog saved = incidentLogRepository.save(log);
+        notificationDispatcherService.dispatchIncidentOpened(saved);
     }
 }

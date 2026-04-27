@@ -51,7 +51,7 @@
           <el-table-column label="发生时间" width="180">
             <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="220" fixed="right">
+          <el-table-column label="操作" width="300" fixed="right">
             <template #default="{ row }">
               <div class="flex items-center gap-2">
                 <el-button size="small" :disabled="row.status === 'ACKNOWLEDGED'" @click="setStatus(row, 'ACKNOWLEDGED')">
@@ -62,6 +62,9 @@
                 </el-button>
                 <el-button size="small" type="info" :disabled="row.status === 'OPEN'" @click="setStatus(row, 'OPEN')">
                   重开
+                </el-button>
+                <el-button size="small" type="primary" plain @click="openDeliveries(row)">
+                  投递记录
                 </el-button>
               </div>
             </template>
@@ -78,19 +81,67 @@
         </div>
       </div>
     </div>
+
+    <el-dialog
+      v-model="deliveryDialogVisible"
+      title="通知投递记录"
+      width="980px"
+      destroy-on-close>
+      <div class="mb-3 text-xs text-slate-500">
+        事件 #{{ selectedIncident?.id || '-' }} · {{ selectedIncident?.metricName || '-' }} · {{ selectedIncident?.hostname || '-' }}
+      </div>
+      <el-table
+        :data="deliveryRecords"
+        v-loading="deliveryLoading"
+        :header-cell-style="{ background: '#1e293b', color: '#94a3b8' }"
+        :row-style="{ background: '#0f172a', color: '#e2e8f0' }">
+        <el-table-column prop="channelName" label="通道名称" width="160" />
+        <el-table-column prop="status" label="结果" width="120">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'SUCCESS' ? 'success' : 'danger'" size="small">
+              {{ row.status }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="httpStatus" label="HTTP" width="100" />
+        <el-table-column prop="target" label="目标" min-width="240" />
+        <el-table-column label="错误信息" min-width="220">
+          <template #default="{ row }">{{ row.errorMessage || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="时间" width="180">
+          <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
+        </el-table-column>
+      </el-table>
+
+      <div class="flex justify-end mt-4">
+        <el-pagination
+          v-model:current-page="deliveryPage"
+          v-model:page-size="deliveryPageSize"
+          :total="deliveryTotal"
+          layout="total, prev, pager, next"
+          @current-change="fetchDeliveries" />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getIncidents, updateIncidentStatus } from '../api/incidents'
+import { getIncidentDeliveries, getIncidents, updateIncidentStatus } from '../api/incidents'
 
 const loading = ref(false)
 const incidents = ref([])
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+const deliveryDialogVisible = ref(false)
+const deliveryLoading = ref(false)
+const deliveryRecords = ref([])
+const deliveryPage = ref(1)
+const deliveryPageSize = ref(10)
+const deliveryTotal = ref(0)
+const selectedIncident = ref(null)
 
 const filters = reactive({
   status: '',
@@ -134,6 +185,33 @@ async function setStatus(row, status) {
     ElMessage.success('状态已更新')
   } catch (e) {
     ElMessage.error('更新状态失败')
+  }
+}
+
+function openDeliveries(row) {
+  selectedIncident.value = row
+  deliveryPage.value = 1
+  deliveryDialogVisible.value = true
+  fetchDeliveries()
+}
+
+async function fetchDeliveries() {
+  if (!selectedIncident.value?.id) {
+    return
+  }
+  deliveryLoading.value = true
+  try {
+    const params = {
+      page: deliveryPage.value - 1,
+      size: deliveryPageSize.value
+    }
+    const { data } = await getIncidentDeliveries(selectedIncident.value.id, params)
+    deliveryRecords.value = data.content || []
+    deliveryTotal.value = data.totalElements || 0
+  } catch (e) {
+    ElMessage.error('加载投递记录失败')
+  } finally {
+    deliveryLoading.value = false
   }
 }
 
