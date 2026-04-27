@@ -1,6 +1,10 @@
 package com.aiops.monitor.controller;
 
+import com.aiops.monitor.model.dto.AiActionExecuteRequest;
+import com.aiops.monitor.model.dto.AiActionPlanCreateRequest;
 import com.aiops.monitor.model.dto.AiInvestigationCreateRequest;
+import com.aiops.monitor.model.entity.AiActionPlan;
+import com.aiops.monitor.model.entity.AiActionRun;
 import com.aiops.monitor.model.entity.AiInvestigation;
 import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.repository.AiActionPlanRepository;
@@ -90,8 +94,7 @@ public class InvestigationController {
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> detail(@PathVariable Long id, Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
-        AiInvestigation investigation = aiInvestigationRepository.findByIdAndUserId(id, user.getId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "调查不存在"));
+        AiInvestigation investigation = requireInvestigation(id, user.getId());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("investigation", investigation);
@@ -107,8 +110,7 @@ public class InvestigationController {
     @GetMapping("/{id}/timeline")
     public ResponseEntity<List<Map<String, Object>>> timeline(@PathVariable Long id, Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
-        AiInvestigation investigation = aiInvestigationRepository.findByIdAndUserId(id, user.getId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "调查不存在"));
+        AiInvestigation investigation = requireInvestigation(id, user.getId());
 
         List<TimelineEvent> events = new ArrayList<>();
         events.add(new TimelineEvent(
@@ -211,8 +213,7 @@ public class InvestigationController {
     @PostMapping("/{id}/close")
     public ResponseEntity<Map<String, Object>> close(@PathVariable Long id, Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
-        AiInvestigation investigation = aiInvestigationRepository.findByIdAndUserId(id, user.getId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "调查不存在"));
+        AiInvestigation investigation = requireInvestigation(id, user.getId());
         investigation.setStatus("CLOSED");
         investigation.setClosedAt(LocalDateTime.now());
         investigation.setUpdatedAt(LocalDateTime.now());
@@ -222,6 +223,108 @@ public class InvestigationController {
         result.put("id", investigation.getId());
         result.put("status", investigation.getStatus());
         result.put("closedAt", investigation.getClosedAt());
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/actions")
+    public ResponseEntity<Map<String, Object>> createAction(@PathVariable Long id,
+                                                            @Valid @RequestBody AiActionPlanCreateRequest request,
+                                                            Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        AiInvestigation investigation = requireInvestigation(id, user.getId());
+        if ("CLOSED".equalsIgnoreCase(investigation.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调查已关闭，不能新增动作");
+        }
+
+        AiActionPlan actionPlan = new AiActionPlan();
+        actionPlan.setInvestigationId(investigation.getId());
+        actionPlan.setUserId(user.getId());
+        actionPlan.setHypothesisId(request.getHypothesisId());
+        actionPlan.setActionType(normalizeUpper(request.getActionType()));
+        actionPlan.setTitle(normalize(request.getTitle()));
+        actionPlan.setCommandText(normalize(request.getCommandText()));
+        actionPlan.setRunbookRef(normalize(request.getRunbookRef()));
+        actionPlan.setRiskLevel(resolveRiskLevel(request.getRiskLevel()));
+        boolean requiresApproval = request.getRequiresApproval() == null || request.getRequiresApproval();
+        actionPlan.setRequiresApproval(requiresApproval);
+        actionPlan.setStatus(requiresApproval ? "PROPOSED" : "APPROVED");
+        actionPlan.setRollbackPlan(normalize(request.getRollbackPlan()));
+        actionPlan.setCreatedAt(LocalDateTime.now());
+        actionPlan.setUpdatedAt(LocalDateTime.now());
+        AiActionPlan saved = aiActionPlanRepository.save(actionPlan);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", saved.getId());
+        result.put("status", saved.getStatus());
+        result.put("requiresApproval", saved.isRequiresApproval());
+        result.put("riskLevel", saved.getRiskLevel());
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/actions/{actionId}/approve")
+    public ResponseEntity<Map<String, Object>> approveAction(@PathVariable Long id,
+                                                             @PathVariable Long actionId,
+                                                             Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        requireInvestigation(id, user.getId());
+        AiActionPlan actionPlan = aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
+
+        if ("EXECUTED".equalsIgnoreCase(actionPlan.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "动作已执行，无法重复审批");
+        }
+
+        actionPlan.setStatus("APPROVED");
+        actionPlan.setUpdatedAt(LocalDateTime.now());
+        aiActionPlanRepository.save(actionPlan);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", actionPlan.getId());
+        result.put("status", actionPlan.getStatus());
+        result.put("updatedAt", actionPlan.getUpdatedAt());
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/actions/{actionId}/execute")
+    public ResponseEntity<Map<String, Object>> executeAction(@PathVariable Long id,
+                                                             @PathVariable Long actionId,
+                                                             @RequestBody(required = false) AiActionExecuteRequest request,
+                                                             Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        requireInvestigation(id, user.getId());
+        AiActionPlan actionPlan = aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
+
+        if (actionPlan.isRequiresApproval() && !"APPROVED".equalsIgnoreCase(actionPlan.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "动作未审批，不能执行");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        String runStatus = resolveExecutionStatus(request == null ? null : request.getStatus());
+
+        AiActionRun actionRun = new AiActionRun();
+        actionRun.setActionPlanId(actionPlan.getId());
+        actionRun.setInvestigationId(id);
+        actionRun.setUserId(user.getId());
+        actionRun.setExecutor(user.getUsername());
+        actionRun.setExecutionMode(resolveExecutionMode(request == null ? null : request.getExecutionMode()));
+        actionRun.setStatus(runStatus);
+        actionRun.setOutputText(normalize(request == null ? null : request.getOutputText()));
+        actionRun.setErrorMessage(normalize(request == null ? null : request.getErrorMessage()));
+        actionRun.setStartedAt(now);
+        actionRun.setEndedAt(now);
+        actionRun.setCreatedAt(now);
+        AiActionRun savedRun = aiActionRunRepository.save(actionRun);
+
+        actionPlan.setStatus("SUCCESS".equalsIgnoreCase(runStatus) ? "EXECUTED" : "FAILED");
+        actionPlan.setUpdatedAt(LocalDateTime.now());
+        aiActionPlanRepository.save(actionPlan);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("actionId", actionPlan.getId());
+        result.put("actionStatus", actionPlan.getStatus());
+        result.put("runId", savedRun.getId());
+        result.put("runStatus", savedRun.getStatus());
         return ResponseEntity.ok(result);
     }
 
@@ -249,6 +352,39 @@ public class InvestigationController {
         return normalized;
     }
 
+    private String resolveRiskLevel(String riskInput) {
+        String normalized = normalizeUpper(riskInput);
+        if (normalized == null) {
+            return "MEDIUM";
+        }
+        if (!"LOW".equals(normalized) && !"MEDIUM".equals(normalized) && !"HIGH".equals(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "riskLevel 仅支持 LOW/MEDIUM/HIGH");
+        }
+        return normalized;
+    }
+
+    private String resolveExecutionStatus(String statusInput) {
+        String normalized = normalizeUpper(statusInput);
+        if (normalized == null) {
+            return "SUCCESS";
+        }
+        if (!"SUCCESS".equals(normalized) && !"FAILED".equals(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status 仅支持 SUCCESS/FAILED");
+        }
+        return normalized;
+    }
+
+    private String resolveExecutionMode(String modeInput) {
+        String normalized = normalizeUpper(modeInput);
+        if (normalized == null) {
+            return "MANUAL";
+        }
+        if (!"MANUAL".equals(normalized) && !"AUTO".equals(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "executionMode 仅支持 MANUAL/AUTO");
+        }
+        return normalized;
+    }
+
     private LocalDateTime nonNullTime(LocalDateTime first, LocalDateTime second) {
         if (first != null) return first;
         if (second != null) return second;
@@ -257,6 +393,11 @@ public class InvestigationController {
 
     private String safe(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private AiInvestigation requireInvestigation(Long id, Long userId) {
+        return aiInvestigationRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "调查不存在"));
     }
 
     private Map<String, Object> toTimelineMap(TimelineEvent event) {

@@ -85,6 +85,74 @@
             <p>{{ locale === 'zh' ? '暂无报告快照' : 'No report snapshot' }}</p>
           </div>
 
+          <div class="action-head">
+            <span>{{ locale === 'zh' ? '动作计划' : 'Action Plans' }}</span>
+            <span>{{ actionPlans.length }}</span>
+          </div>
+
+          <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="action-create">
+            <el-input
+              v-model="actionDraft.title"
+              size="small"
+              :placeholder="locale === 'zh' ? '动作标题，例如：回收高内存进程' : 'Action title, e.g. recycle high-memory process'" />
+            <el-input
+              v-model="actionDraft.commandText"
+              type="textarea"
+              :rows="2"
+              resize="none"
+              :placeholder="locale === 'zh' ? '执行命令或 runbook 描述' : 'Command or runbook notes'" />
+            <div class="action-create-row">
+              <el-select v-model="actionDraft.riskLevel" size="small" class="action-select">
+                <el-option label="LOW" value="LOW" />
+                <el-option label="MEDIUM" value="MEDIUM" />
+                <el-option label="HIGH" value="HIGH" />
+              </el-select>
+              <el-switch
+                v-model="actionDraft.requiresApproval"
+                :active-text="locale === 'zh' ? '需审批' : 'Approval'"
+                :inactive-text="locale === 'zh' ? '免审批' : 'No approval'" />
+              <el-button size="small" type="primary" :loading="actionSubmitting" @click="createActionPlan">
+                {{ locale === 'zh' ? '新增动作' : 'Add Action' }}
+              </el-button>
+            </div>
+          </div>
+
+          <div class="action-list">
+            <div v-for="action in actionPlans" :key="action.id" class="action-item">
+              <div class="action-item-head">
+                <p class="action-title">{{ action.title }}</p>
+                <div class="action-tags">
+                  <span class="inv-chip">{{ action.actionType }}</span>
+                  <span class="inv-chip" :class="`risk-${(action.riskLevel || '').toLowerCase()}`">{{ action.riskLevel || 'MEDIUM' }}</span>
+                  <span class="inv-chip">{{ action.status }}</span>
+                </div>
+              </div>
+              <p v-if="action.commandText" class="action-command">{{ action.commandText }}</p>
+              <div class="action-buttons">
+                <el-button
+                  size="small"
+                  plain
+                  :disabled="action.status === 'APPROVED' || action.status === 'EXECUTED' || action.status === 'FAILED' || !action.requiresApproval"
+                  :loading="actionOperatingId === action.id && actionOperatingType === 'approve'"
+                  @click="approveAction(action)">
+                  {{ locale === 'zh' ? '审批' : 'Approve' }}
+                </el-button>
+                <el-button
+                  size="small"
+                  type="success"
+                  plain
+                  :disabled="action.status === 'EXECUTED' || action.status === 'FAILED' || (action.requiresApproval && action.status !== 'APPROVED')"
+                  :loading="actionOperatingId === action.id && actionOperatingType === 'execute'"
+                  @click="executeAction(action)">
+                  {{ locale === 'zh' ? '执行' : 'Execute' }}
+                </el-button>
+              </div>
+            </div>
+            <div v-if="!actionPlans.length" class="ai-empty inline">
+              <p>{{ locale === 'zh' ? '暂无动作计划' : 'No action plans' }}</p>
+            </div>
+          </div>
+
           <div class="timeline-head">
             <span>{{ locale === 'zh' ? '调查时间线' : 'Timeline' }}</span>
             <span>{{ timelineEvents.length }}</span>
@@ -132,7 +200,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { marked } from 'marked'
 import SockJS from 'sockjs-client'
 import Stomp from 'stompjs'
@@ -141,7 +209,10 @@ import { WS_BASE_URL } from '../config/env'
 import { useAuthStore } from '../stores/auth'
 import { useLocaleMode } from '../composables/useLocaleMode'
 import {
+  approveInvestigationAction,
   closeInvestigation,
+  createInvestigationAction,
+  executeInvestigationAction,
   getInvestigationDetail,
   getInvestigations,
   getInvestigationTimeline
@@ -161,16 +232,28 @@ const timelineEvents = ref([])
 const loadingInvestigations = ref(false)
 const loadingDetail = ref(false)
 const closingInvestigation = ref(false)
+const actionSubmitting = ref(false)
+const actionOperatingId = ref(null)
+const actionOperatingType = ref('')
 
 let stompClient = null
 let reconnectTimer = null
 let reportCounter = 0
 let investigationRefreshTimer = null
 
+const actionDraft = reactive({
+  title: '',
+  commandText: '',
+  riskLevel: 'MEDIUM',
+  requiresApproval: true
+})
+
 const selectedSnapshotHtml = computed(() => {
   const markdown = selectedDetail.value?.latestSnapshot?.reportMarkdown
   return markdown ? marked.parse(markdown) : ''
 })
+
+const actionPlans = computed(() => selectedDetail.value?.actionPlans || [])
 
 function clearReports() {
   reports.value = []
@@ -314,6 +397,76 @@ async function closeCurrentInvestigation() {
     ElMessage.error(locale.value === 'zh' ? '关闭调查失败' : 'Failed to close investigation')
   } finally {
     closingInvestigation.value = false
+  }
+}
+
+async function createActionPlan() {
+  const investigationId = selectedDetail.value?.investigation?.id
+  if (!investigationId) return
+  if (!actionDraft.title.trim()) {
+    ElMessage.warning(locale.value === 'zh' ? '请填写动作标题' : 'Please input action title')
+    return
+  }
+  actionSubmitting.value = true
+  try {
+    await createInvestigationAction(investigationId, {
+      actionType: 'RUNBOOK',
+      title: actionDraft.title.trim(),
+      commandText: actionDraft.commandText.trim() || undefined,
+      riskLevel: actionDraft.riskLevel,
+      requiresApproval: actionDraft.requiresApproval
+    })
+    actionDraft.title = ''
+    actionDraft.commandText = ''
+    actionDraft.riskLevel = 'MEDIUM'
+    actionDraft.requiresApproval = true
+    ElMessage.success(locale.value === 'zh' ? '动作计划已创建' : 'Action created')
+    await loadInvestigationDetail(investigationId, true)
+    await loadInvestigationTimeline(investigationId, true)
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? '创建动作失败' : 'Failed to create action')
+  } finally {
+    actionSubmitting.value = false
+  }
+}
+
+async function approveAction(action) {
+  const investigationId = selectedDetail.value?.investigation?.id
+  if (!investigationId || !action?.id) return
+  actionOperatingId.value = action.id
+  actionOperatingType.value = 'approve'
+  try {
+    await approveInvestigationAction(investigationId, action.id)
+    ElMessage.success(locale.value === 'zh' ? '审批完成' : 'Approved')
+    await loadInvestigationDetail(investigationId, true)
+    await loadInvestigationTimeline(investigationId, true)
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? '审批失败' : 'Approve failed')
+  } finally {
+    actionOperatingId.value = null
+    actionOperatingType.value = ''
+  }
+}
+
+async function executeAction(action) {
+  const investigationId = selectedDetail.value?.investigation?.id
+  if (!investigationId || !action?.id) return
+  actionOperatingId.value = action.id
+  actionOperatingType.value = 'execute'
+  try {
+    await executeInvestigationAction(investigationId, action.id, {
+      status: 'SUCCESS',
+      executionMode: 'MANUAL',
+      outputText: 'Executed via AI Expert Panel.'
+    })
+    ElMessage.success(locale.value === 'zh' ? '执行记录已写入' : 'Execution recorded')
+    await loadInvestigationDetail(investigationId, true)
+    await loadInvestigationTimeline(investigationId, true)
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? '执行失败' : 'Execute failed')
+  } finally {
+    actionOperatingId.value = null
+    actionOperatingType.value = ''
   }
 }
 
@@ -535,6 +688,97 @@ onUnmounted(() => {
 
 .report-snapshot :deep(*) {
   color: inherit;
+}
+
+.action-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.action-create {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-create-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-select {
+  width: 120px;
+}
+
+.action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 190px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.action-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.action-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.action-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-1);
+}
+
+.action-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inv-chip.risk-low {
+  border-color: rgba(74, 222, 128, 0.4);
+  color: #4ade80;
+}
+
+.inv-chip.risk-medium {
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+}
+
+.inv-chip.risk-high {
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #f87171;
+}
+
+.action-command {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: pre-wrap;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
 }
 
 .timeline-head {
