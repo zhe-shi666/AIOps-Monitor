@@ -1,87 +1,81 @@
 <template>
-  <div class="min-h-screen bg-slate-950 text-slate-100 p-8 pt-24">
-    <div class="max-w-7xl mx-auto space-y-6">
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-2xl font-bold tracking-tight">通知通道</h1>
-          <p class="text-sm text-slate-400 mt-1">管理告警 Webhook 通道，支持启停与投递审计</p>
-        </div>
-        <div class="flex items-center gap-3">
-          <el-button @click="loadChannels" :loading="loading">刷新</el-button>
-          <el-button type="primary" @click="openCreateDialog">新增通道</el-button>
-        </div>
+  <div class="page-surface">
+    <div class="page-hero">
+      <div>
+        <h1>{{ t('title') }}</h1>
+        <p>{{ t('subtitle') }}</p>
       </div>
+      <div class="inline-actions">
+        <el-button @click="loadChannels" :loading="loading">{{ t('refresh') }}</el-button>
+        <el-button type="primary" @click="openCreateDialog">{{ t('create') }}</el-button>
+      </div>
+    </div>
 
-      <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-4">
-        <el-table
-          :data="channels"
-          v-loading="loading"
-          :header-cell-style="{ background: '#1e293b', color: '#94a3b8' }"
-          :row-style="{ background: '#0f172a', color: '#e2e8f0' }">
-          <el-table-column prop="name" label="名称" min-width="140" />
-          <el-table-column prop="type" label="类型" width="120" />
-          <el-table-column label="Webhook" min-width="280">
-            <template #default="{ row }">
-              <span class="font-mono text-xs text-slate-300 break-all">{{ row.webhookUrl }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="启用" width="120" align="center">
-            <template #default="{ row }">
-              <el-switch
-                :model-value="row.enabled"
-                @change="(value) => toggleEnabled(row, value)"
-                inline-prompt
-                active-text="ON"
-                inactive-text="OFF" />
-            </template>
-          </el-table-column>
-          <el-table-column label="最近投递" width="180">
-            <template #default="{ row }">{{ formatDate(row.lastNotifiedAt) }}</template>
-          </el-table-column>
-          <el-table-column label="最近错误" min-width="220">
-            <template #default="{ row }">
-              <span class="text-xs text-rose-300">{{ row.lastError || '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="190" fixed="right">
-            <template #default="{ row }">
-              <div class="flex items-center gap-2">
-                <el-button size="small" @click="openEditDialog(row)">编辑</el-button>
-                <el-button size="small" type="danger" @click="removeChannel(row)">删除</el-button>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
+    <div class="card-panel table-wrap ops-table">
+      <el-table :data="channels" v-loading="loading">
+        <el-table-column prop="name" :label="t('name')" min-width="140" />
+        <el-table-column prop="type" :label="t('type')" width="120" />
+        <el-table-column label="Webhook" min-width="280">
+          <template #default="{ row }">
+            <span class="font-mono text-xs text-slate-300 break-all">{{ row.webhookUrl }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('enabled')" width="120" align="center">
+          <template #default="{ row }">
+            <el-switch
+              :model-value="row.enabled"
+              @change="(value) => toggleEnabled(row, value)"
+              inline-prompt
+              active-text="ON"
+              inactive-text="OFF" />
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('lastDelivery')" width="180">
+          <template #default="{ row }">{{ formatDate(row.lastNotifiedAt) }}</template>
+        </el-table-column>
+        <el-table-column :label="t('lastError')" min-width="220">
+          <template #default="{ row }">
+            <span class="text-xs text-rose-300">{{ row.lastError || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column :label="t('actions')" width="190" fixed="right">
+          <template #default="{ row }">
+            <div class="flex items-center gap-2">
+              <el-button size="small" @click="openEditDialog(row)">{{ t('edit') }}</el-button>
+              <el-button size="small" type="danger" @click="removeChannel(row)">{{ t('delete') }}</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
     </div>
 
     <el-dialog
       v-model="dialogVisible"
-      :title="editingId ? '编辑通知通道' : '新增通知通道'"
+      :title="editingId ? t('editDialog') : t('createDialog')"
       width="640px"
       destroy-on-close>
       <el-form :model="form" label-width="120px" class="space-y-3">
-        <el-form-item label="名称">
-          <el-input v-model="form.name" maxlength="100" placeholder="例如：运维值班 Webhook" />
+        <el-form-item :label="t('name')">
+          <el-input v-model="form.name" maxlength="100" :placeholder="t('namePlaceholder')" />
         </el-form-item>
-        <el-form-item label="类型">
+        <el-form-item :label="t('type')">
           <el-input v-model="form.type" disabled />
         </el-form-item>
         <el-form-item label="Webhook URL">
           <el-input v-model="form.webhookUrl" placeholder="https://example.com/hooks/aiops" />
         </el-form-item>
-        <el-form-item label="Secret(可选)">
-          <el-input v-model="form.secret" type="password" show-password placeholder="用于接收端鉴权" />
+        <el-form-item :label="t('secretOptional')">
+          <el-input v-model="form.secret" type="password" show-password :placeholder="t('secretPlaceholder')" />
         </el-form-item>
-        <el-form-item label="启用">
+        <el-form-item :label="t('enabled')">
           <el-switch v-model="form.enabled" />
         </el-form-item>
       </el-form>
 
       <template #footer>
         <div class="flex items-center justify-end gap-2">
-          <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="saving" @click="saveChannel">保存</el-button>
+          <el-button @click="dialogVisible = false">{{ t('cancel') }}</el-button>
+          <el-button type="primary" :loading="saving" @click="saveChannel">{{ t('save') }}</el-button>
         </div>
       </template>
     </el-dialog>
@@ -98,6 +92,7 @@ import {
   updateNotificationChannel,
   updateNotificationChannelEnabled
 } from '../api/notifications'
+import { useI18n } from '../composables/useI18n'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -113,13 +108,46 @@ const form = reactive({
   enabled: true
 })
 
+const { locale, t } = useI18n({
+  title: { zh: '通知通道', en: 'Notification Channels' },
+  subtitle: { zh: '管理告警 Webhook 通道，支持启停与投递审计', en: 'Manage alert webhooks with enable controls and delivery audit' },
+  refresh: { zh: '刷新', en: 'Refresh' },
+  create: { zh: '新增通道', en: 'New Channel' },
+  name: { zh: '名称', en: 'Name' },
+  type: { zh: '类型', en: 'Type' },
+  enabled: { zh: '启用', en: 'Enabled' },
+  lastDelivery: { zh: '最近投递', en: 'Last Delivery' },
+  lastError: { zh: '最近错误', en: 'Last Error' },
+  actions: { zh: '操作', en: 'Actions' },
+  edit: { zh: '编辑', en: 'Edit' },
+  delete: { zh: '删除', en: 'Delete' },
+  editDialog: { zh: '编辑通知通道', en: 'Edit Channel' },
+  createDialog: { zh: '新增通知通道', en: 'Create Channel' },
+  namePlaceholder: { zh: '例如：运维值班 Webhook', en: 'e.g. Ops On-call Webhook' },
+  secretOptional: { zh: 'Secret(可选)', en: 'Secret (Optional)' },
+  secretPlaceholder: { zh: '用于接收端鉴权', en: 'Used for receiver authentication' },
+  cancel: { zh: '取消', en: 'Cancel' },
+  save: { zh: '保存', en: 'Save' },
+  loadFailed: { zh: '加载通知通道失败', en: 'Failed to load channels' },
+  nameRequired: { zh: '请填写通道名称', en: 'Please enter channel name' },
+  webhookRequired: { zh: '请填写 Webhook URL', en: 'Please enter Webhook URL' },
+  saved: { zh: '通知通道已保存', en: 'Channel saved' },
+  saveFailed: { zh: '保存失败', en: 'Save failed' },
+  statusUpdated: { zh: '状态已更新', en: 'Status updated' },
+  statusUpdateFailed: { zh: '更新启用状态失败', en: 'Failed to update status' },
+  deleteConfirm: { zh: '确认删除通知通道「{name}」吗？', en: 'Delete notification channel "{name}"?' },
+  deleteTitle: { zh: '删除确认', en: 'Delete Confirmation' },
+  deleted: { zh: '已删除', en: 'Deleted' },
+  deleteFailed: { zh: '删除失败', en: 'Delete failed' }
+})
+
 async function loadChannels() {
   loading.value = true
   try {
     const { data } = await getNotificationChannels()
     channels.value = Array.isArray(data) ? data : []
-  } catch (e) {
-    ElMessage.error('加载通知通道失败')
+  } catch (_e) {
+    ElMessage.error(t('loadFailed'))
   } finally {
     loading.value = false
   }
@@ -151,11 +179,11 @@ function openEditDialog(channel) {
 
 async function saveChannel() {
   if (!form.name.trim()) {
-    ElMessage.warning('请填写通道名称')
+    ElMessage.warning(t('nameRequired'))
     return
   }
   if (!form.webhookUrl.trim()) {
-    ElMessage.warning('请填写 Webhook URL')
+    ElMessage.warning(t('webhookRequired'))
     return
   }
 
@@ -179,10 +207,10 @@ async function saveChannel() {
       await createNotificationChannel(payload)
     }
     dialogVisible.value = false
-    ElMessage.success('通知通道已保存')
+    ElMessage.success(t('saved'))
     await loadChannels()
   } catch (e) {
-    ElMessage.error(e?.response?.data?.message || '保存失败')
+    ElMessage.error(e?.response?.data?.message || t('saveFailed'))
   } finally {
     saving.value = false
   }
@@ -193,33 +221,34 @@ async function toggleEnabled(row, enabled) {
   row.enabled = enabled
   try {
     await updateNotificationChannelEnabled(row.id, Boolean(enabled))
-    ElMessage.success('状态已更新')
-  } catch (e) {
+    ElMessage.success(t('statusUpdated'))
+  } catch (_e) {
     row.enabled = previous
-    ElMessage.error('更新启用状态失败')
+    ElMessage.error(t('statusUpdateFailed'))
   }
 }
 
 async function removeChannel(row) {
   try {
     await ElMessageBox.confirm(
-      `确认删除通知通道「${row.name}」吗？`,
-      '删除确认',
+      t('deleteConfirm', { name: row.name }),
+      t('deleteTitle'),
       { type: 'warning' }
     )
     await deleteNotificationChannel(row.id)
-    ElMessage.success('已删除')
+    ElMessage.success(t('deleted'))
     await loadChannels()
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') {
-      ElMessage.error('删除失败')
+      ElMessage.error(t('deleteFailed'))
     }
   }
 }
 
 function formatDate(value) {
   if (!value) return '-'
-  return new Date(value).toLocaleString('zh-CN')
+  const localeCode = locale.value === 'zh' ? 'zh-CN' : 'en-US'
+  return new Date(value).toLocaleString(localeCode)
 }
 
 onMounted(loadChannels)

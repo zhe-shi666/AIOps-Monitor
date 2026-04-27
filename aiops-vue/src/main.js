@@ -6,7 +6,11 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import './style.css'
 import App from './App.vue'
 import router from './router/index.js'
+import { initTheme } from './composables/useTheme'
+import { initLocaleMode } from './composables/useLocaleMode'
 
+initTheme()
+initLocaleMode()
 const app = createApp(App)
 const pinia = createPinia()
 

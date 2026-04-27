@@ -1,10 +1,10 @@
 <template>
-  <NavBar v-if="auth.isLoggedIn" />
-  <router-view />
+  <router-view v-if="!auth.isLoggedIn" />
+  <AppShell v-else />
 </template>
 
 <script setup>
-import NavBar from './components/NavBar.vue'
+import AppShell from './components/AppShell.vue'
 import { useAuthStore } from './stores/auth'
 const auth = useAuthStore()
 </script>
