@@ -41,7 +41,9 @@ public class ThresholdConfigController {
                 request.getCpuThreshold(),
                 request.getMemoryThreshold(),
                 request.getDiskThreshold(),
-                request.getProcessCountThreshold()
+                request.getProcessCountThreshold(),
+                request.getConsecutiveBreachCount(),
+                request.getSilenceSeconds()
         );
         return ResponseEntity.ok(toView(config));
     }
@@ -52,6 +54,8 @@ public class ThresholdConfigController {
                 "memoryThreshold", config.getMemoryThreshold(),
                 "diskThreshold", config.getDiskThreshold(),
                 "processCountThreshold", config.getProcessCountThreshold(),
+                "consecutiveBreachCount", config.getConsecutiveBreachCount(),
+                "silenceSeconds", config.getSilenceSeconds(),
                 "updatedAt", config.getUpdatedAt()
         );
     }

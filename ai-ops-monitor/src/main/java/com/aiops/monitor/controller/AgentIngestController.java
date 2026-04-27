@@ -38,6 +38,7 @@ public class AgentIngestController {
     private final ThresholdConfigService thresholdConfigService;
     private final NotificationDispatcherService notificationDispatcherService;
     private final Map<String, LocalDateTime> lastAlertAt = new ConcurrentHashMap<>();
+    private final Map<String, Integer> breachCounter = new ConcurrentHashMap<>();
 
     @PostMapping("/register")
     public ResponseEntity<Map<String, Object>> register(@Valid @RequestBody AgentRegisterRequest request) {
@@ -97,12 +98,17 @@ public class AgentIngestController {
         sendMetric("PROCESS_COUNT", request.getProcessCount() == null ? null : request.getProcessCount().doubleValue(), request, target);
 
         AlertThresholdConfig threshold = thresholdConfigService.getOrCreateByUserId(target.getUserId());
-        evaluateAndRecordIncident(target, "CPU", request.getCpuUsage(), threshold.getCpuThreshold());
-        evaluateAndRecordIncident(target, "MEMORY", request.getMemUsage(), threshold.getMemoryThreshold());
-        evaluateAndRecordIncident(target, "DISK", request.getDiskUsage(), threshold.getDiskThreshold());
+        evaluateAndRecordIncident(target, "CPU", request.getCpuUsage(), threshold.getCpuThreshold(),
+                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds());
+        evaluateAndRecordIncident(target, "MEMORY", request.getMemUsage(), threshold.getMemoryThreshold(),
+                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds());
+        evaluateAndRecordIncident(target, "DISK", request.getDiskUsage(), threshold.getDiskThreshold(),
+                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds());
         evaluateAndRecordIncident(target, "PROCESS_COUNT",
                 request.getProcessCount() == null ? null : request.getProcessCount().doubleValue(),
-                threshold.getProcessCountThreshold());
+                threshold.getProcessCountThreshold(),
+                threshold.getConsecutiveBreachCount(),
+                threshold.getSilenceSeconds());
 
         return ResponseEntity.ok(Map.of(
                 "targetId", target.getId(),
@@ -144,27 +150,43 @@ public class AgentIngestController {
         metricsPublisher.send("/topic/metrics", metric);
     }
 
-    private void evaluateAndRecordIncident(MonitorTarget target, String metricName, Double value, double threshold) {
+    private void evaluateAndRecordIncident(MonitorTarget target,
+                                           String metricName,
+                                           Double value,
+                                           double threshold,
+                                           Integer consecutiveBreachCount,
+                                           Integer silenceSeconds) {
+        String alertKey = target.getId() + ":" + metricName;
         if (value == null || value <= threshold) {
+            breachCounter.remove(alertKey);
+            return;
+        }
+
+        int requiredCount = consecutiveBreachCount == null || consecutiveBreachCount < 1 ? 1 : consecutiveBreachCount;
+        int currentCount = breachCounter.merge(alertKey, 1, Integer::sum);
+        if (currentCount < requiredCount) {
             return;
         }
 
         LocalDateTime now = LocalDateTime.now();
-        String alertKey = target.getId() + ":" + metricName;
+        int effectiveSilenceSeconds = silenceSeconds == null || silenceSeconds < 1 ? 180 : silenceSeconds;
         LocalDateTime last = lastAlertAt.get(alertKey);
-        if (last != null && last.plusMinutes(3).isAfter(now)) {
+        if (last != null && last.plusSeconds(effectiveSilenceSeconds).isAfter(now)) {
             return;
         }
+
+        breachCounter.put(alertKey, 0);
         lastAlertAt.put(alertKey, now);
 
         IncidentLog log = new IncidentLog();
         log.setMetricName(metricName);
         log.setMetricValue(value);
         log.setThreshold(threshold);
-        log.setMessage(String.format("%s(%s) %s 超阈值: %.2f > %.2f",
+        log.setMessage(String.format("%s(%s) %s 连续%d次超阈值: %.2f > %.2f",
                 target.getName(),
                 target.getHostname() == null ? "unknown" : target.getHostname(),
                 metricName,
+                requiredCount,
                 value,
                 threshold));
         log.setHostname(target.getHostname());

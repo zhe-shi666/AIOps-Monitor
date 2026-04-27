@@ -26,22 +26,37 @@ public class ThresholdConfigService {
     @Value("${monitor.threshold.process-count:400}")
     private int defaultProcessCountThreshold;
 
+    @Value("${monitor.threshold.consecutive-breach-count:2}")
+    private int defaultConsecutiveBreachCount;
+
+    @Value("${monitor.threshold.silence-seconds:180}")
+    private int defaultSilenceSeconds;
+
     public AlertThresholdConfig getOrCreateByUserId(Long userId) {
-        return alertThresholdConfigRepository.findByUserId(userId)
+        AlertThresholdConfig config = alertThresholdConfigRepository.findByUserId(userId)
                 .orElseGet(() -> {
-                    AlertThresholdConfig config = new AlertThresholdConfig();
-                    config.setUserId(userId);
-                    config.setCpuThreshold(defaultCpuThreshold);
-                    config.setMemoryThreshold(defaultMemoryThreshold);
-                    config.setDiskThreshold(defaultDiskThreshold);
-                    config.setProcessCountThreshold(defaultProcessCountThreshold);
-                    config.setCreatedAt(LocalDateTime.now());
-                    config.setUpdatedAt(LocalDateTime.now());
-                    return alertThresholdConfigRepository.save(config);
+                    AlertThresholdConfig created = new AlertThresholdConfig();
+                    created.setUserId(userId);
+                    created.setCpuThreshold(defaultCpuThreshold);
+                    created.setMemoryThreshold(defaultMemoryThreshold);
+                    created.setDiskThreshold(defaultDiskThreshold);
+                    created.setProcessCountThreshold(defaultProcessCountThreshold);
+                    created.setConsecutiveBreachCount(defaultConsecutiveBreachCount);
+                    created.setSilenceSeconds(defaultSilenceSeconds);
+                    created.setCreatedAt(LocalDateTime.now());
+                    created.setUpdatedAt(LocalDateTime.now());
+                    return alertThresholdConfigRepository.save(created);
                 });
+        return patchDefaultValues(config);
     }
 
-    public AlertThresholdConfig update(Long userId, Double cpu, Double memory, Double disk, Integer processCount) {
+    public AlertThresholdConfig update(Long userId,
+                                       Double cpu,
+                                       Double memory,
+                                       Double disk,
+                                       Integer processCount,
+                                       Integer consecutiveBreachCount,
+                                       Integer silenceSeconds) {
         AlertThresholdConfig config = getOrCreateByUserId(userId);
         if (cpu != null) {
             config.setCpuThreshold(cpu);
@@ -55,7 +70,30 @@ public class ThresholdConfigService {
         if (processCount != null) {
             config.setProcessCountThreshold(processCount);
         }
+        if (consecutiveBreachCount != null) {
+            config.setConsecutiveBreachCount(consecutiveBreachCount);
+        }
+        if (silenceSeconds != null) {
+            config.setSilenceSeconds(silenceSeconds);
+        }
         config.setUpdatedAt(LocalDateTime.now());
         return alertThresholdConfigRepository.save(config);
+    }
+
+    private AlertThresholdConfig patchDefaultValues(AlertThresholdConfig config) {
+        boolean changed = false;
+        if (config.getConsecutiveBreachCount() == null || config.getConsecutiveBreachCount() < 1) {
+            config.setConsecutiveBreachCount(defaultConsecutiveBreachCount);
+            changed = true;
+        }
+        if (config.getSilenceSeconds() == null || config.getSilenceSeconds() < 10) {
+            config.setSilenceSeconds(defaultSilenceSeconds);
+            changed = true;
+        }
+        if (changed) {
+            config.setUpdatedAt(LocalDateTime.now());
+            return alertThresholdConfigRepository.save(config);
+        }
+        return config;
     }
 }

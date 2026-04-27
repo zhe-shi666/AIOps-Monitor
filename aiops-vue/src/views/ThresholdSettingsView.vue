@@ -4,7 +4,7 @@
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-2xl font-bold tracking-tight">告警阈值配置</h1>
-          <p class="text-sm text-slate-400 mt-1">按当前用户生效，Agent 上报告警会实时使用这些阈值</p>
+          <p class="text-sm text-slate-400 mt-1">按当前用户生效，支持连续触发与静默窗口降噪</p>
         </div>
         <el-button @click="reload" :loading="loading">刷新</el-button>
       </div>
@@ -38,6 +38,20 @@
               <el-input-number v-model="form.processCountThreshold" :min="1" :max="2000" />
             </div>
           </el-form-item>
+
+          <el-form-item label="连续超阈值次数">
+            <div class="w-full flex items-center gap-4">
+              <el-slider v-model="form.consecutiveBreachCount" :min="1" :max="10" class="flex-1" />
+              <el-input-number v-model="form.consecutiveBreachCount" :min="1" :max="10" />
+            </div>
+          </el-form-item>
+
+          <el-form-item label="静默窗口 (秒)">
+            <div class="w-full flex items-center gap-4">
+              <el-slider v-model="form.silenceSeconds" :min="10" :max="3600" :step="10" class="flex-1" />
+              <el-input-number v-model="form.silenceSeconds" :min="10" :max="3600" :step="10" />
+            </div>
+          </el-form-item>
         </el-form>
       </div>
 
@@ -62,7 +76,9 @@ const form = reactive({
   cpuThreshold: 70,
   memoryThreshold: 90,
   diskThreshold: 85,
-  processCountThreshold: 400
+  processCountThreshold: 400,
+  consecutiveBreachCount: 2,
+  silenceSeconds: 180
 })
 
 async function reload() {
@@ -73,6 +89,8 @@ async function reload() {
     form.memoryThreshold = Number(data.memoryThreshold || 90)
     form.diskThreshold = Number(data.diskThreshold || 85)
     form.processCountThreshold = Number(data.processCountThreshold || 400)
+    form.consecutiveBreachCount = Number(data.consecutiveBreachCount || 2)
+    form.silenceSeconds = Number(data.silenceSeconds || 180)
     updatedAt.value = data.updatedAt || null
   } catch (e) {
     ElMessage.error('加载阈值配置失败')
@@ -88,7 +106,9 @@ async function save() {
       cpuThreshold: Number(form.cpuThreshold),
       memoryThreshold: Number(form.memoryThreshold),
       diskThreshold: Number(form.diskThreshold),
-      processCountThreshold: Number(form.processCountThreshold)
+      processCountThreshold: Number(form.processCountThreshold),
+      consecutiveBreachCount: Number(form.consecutiveBreachCount),
+      silenceSeconds: Number(form.silenceSeconds)
     }
     const { data } = await updateThresholdSettings(payload)
     updatedAt.value = data.updatedAt || null

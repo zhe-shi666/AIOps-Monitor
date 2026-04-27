@@ -58,3 +58,5 @@ monitor:
     memory: 90
     disk: 85
     process-count: 400
+    consecutive-breach-count: 2
+    silence-seconds: 180

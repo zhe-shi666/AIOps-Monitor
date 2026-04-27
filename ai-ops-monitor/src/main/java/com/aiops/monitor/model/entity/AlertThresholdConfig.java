@@ -30,6 +30,12 @@ public class AlertThresholdConfig {
     @Column(name = "process_count_threshold", nullable = false)
     private Integer processCountThreshold;
 
+    @Column(name = "consecutive_breach_count", nullable = false)
+    private Integer consecutiveBreachCount;
+
+    @Column(name = "silence_seconds", nullable = false)
+    private Integer silenceSeconds;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 
