@@ -12,11 +12,13 @@ import com.aiops.monitor.repository.IncidentLogRepository;
 import com.aiops.monitor.repository.MonitorTargetRepository;
 import com.aiops.monitor.repository.SystemMetricsRepository;
 import com.aiops.monitor.service.EscalationPolicyService;
+import com.aiops.monitor.service.InvestigationOrchestrator;
 import com.aiops.monitor.service.MetricsPublisher;
 import com.aiops.monitor.service.NotificationDispatcherService;
 import com.aiops.monitor.service.ThresholdConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -31,6 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @RestController
 @RequestMapping("/api/agent")
 @RequiredArgsConstructor
+@Slf4j
 public class AgentIngestController {
 
     private final MonitorTargetRepository monitorTargetRepository;
@@ -40,6 +43,7 @@ public class AgentIngestController {
     private final ThresholdConfigService thresholdConfigService;
     private final EscalationPolicyService escalationPolicyService;
     private final NotificationDispatcherService notificationDispatcherService;
+    private final InvestigationOrchestrator investigationOrchestrator;
     private final Map<String, LocalDateTime> lastAlertAt = new ConcurrentHashMap<>();
     private final Map<String, Integer> breachCounter = new ConcurrentHashMap<>();
 
@@ -186,11 +190,11 @@ public class AgentIngestController {
         String severity = calculateSeverity(value, threshold);
         Integer firstIntervalMinutes = escalationPolicyService.getIntervalMinutes(escalationPolicy, severity, 0);
 
-        IncidentLog log = new IncidentLog();
-        log.setMetricName(metricName);
-        log.setMetricValue(value);
-        log.setThreshold(threshold);
-        log.setMessage(String.format("[%s] %s(%s) %s 连续%d次超阈值: %.2f > %.2f",
+        IncidentLog incidentEntity = new IncidentLog();
+        incidentEntity.setMetricName(metricName);
+        incidentEntity.setMetricValue(value);
+        incidentEntity.setThreshold(threshold);
+        incidentEntity.setMessage(String.format("[%s] %s(%s) %s 连续%d次超阈值: %.2f > %.2f",
                 severity,
                 target.getName(),
                 target.getHostname() == null ? "unknown" : target.getHostname(),
@@ -198,17 +202,22 @@ public class AgentIngestController {
                 requiredCount,
                 value,
                 threshold));
-        log.setHostname(target.getHostname());
-        log.setUserId(target.getUserId());
-        log.setTargetId(target.getId());
-        log.setSeverity(severity);
-        log.setStatus("OPEN");
-        log.setEscalationLevel(0);
-        log.setLastNotifiedAt(now);
-        log.setNextNotifyAt(firstIntervalMinutes == null ? null : now.plusMinutes(firstIntervalMinutes));
-        log.setCreatedAt(now);
-        IncidentLog saved = incidentLogRepository.save(log);
+        incidentEntity.setHostname(target.getHostname());
+        incidentEntity.setUserId(target.getUserId());
+        incidentEntity.setTargetId(target.getId());
+        incidentEntity.setSeverity(severity);
+        incidentEntity.setStatus("OPEN");
+        incidentEntity.setEscalationLevel(0);
+        incidentEntity.setLastNotifiedAt(now);
+        incidentEntity.setNextNotifyAt(firstIntervalMinutes == null ? null : now.plusMinutes(firstIntervalMinutes));
+        incidentEntity.setCreatedAt(now);
+        IncidentLog saved = incidentLogRepository.save(incidentEntity);
         notificationDispatcherService.dispatchIncidentOpened(saved);
+        try {
+            investigationOrchestrator.openFromIncident(saved);
+        } catch (Exception ex) {
+            log.warn("create investigation failed, incidentId={}, reason={}", saved.getId(), ex.getMessage());
+        }
     }
 
     private String calculateSeverity(double value, double threshold) {
