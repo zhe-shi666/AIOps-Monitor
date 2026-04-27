@@ -17,6 +17,18 @@ public class SystemMetricsHistory {
     @Column(name = "mem_usage")
     private Double memUsage;
 
+    @Column(name = "disk_usage")
+    private Double diskUsage;
+
+    @Column(name = "net_rx_bytes_per_sec")
+    private Double netRxBytesPerSec;
+
+    @Column(name = "net_tx_bytes_per_sec")
+    private Double netTxBytesPerSec;
+
+    @Column(name = "process_count")
+    private Integer processCount;
+
     private java.time.LocalDateTime timestamp = java.time.LocalDateTime.now();
 
     private String hostname;

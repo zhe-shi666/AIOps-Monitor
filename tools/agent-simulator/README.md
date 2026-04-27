@@ -24,5 +24,9 @@ node tools/agent-simulator/simulate-agent.mjs
 - `AGENT_VERSION` 默认 `sim-1.0.0`
 - `CPU_BASE` 默认 `35`
 - `MEM_BASE` 默认 `60`
+- `DISK_BASE` 默认 `55`
+- `NET_RX_BASE` 默认 `1048576`（1 MiB/s）
+- `NET_TX_BASE` 默认 `786432`（0.75 MiB/s）
+- `PROCESS_BASE` 默认 `180`
 
 脚本会先调用 `/api/agent/register`，随后定时调用 `/api/agent/heartbeat`。

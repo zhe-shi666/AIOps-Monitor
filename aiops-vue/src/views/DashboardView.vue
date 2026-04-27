@@ -1,7 +1,6 @@
 <template>
   <div class="min-h-screen p-8 pt-20 transition-colors duration-300"
        :class="isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'">
-    <!-- WebSocket 连接状态 -->
     <div class="fixed top-14 left-6 z-40 flex items-center gap-2 px-2.25 py-0.35 rounded-md border shadow-md backdrop-blur-sm transition-all duration-300"
          :class="wsConnected
            ? 'bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20'
@@ -18,7 +17,6 @@
       </span>
     </div>
 
-    <!-- 控制按钮 -->
     <div class="absolute top-16 left-1/2 transform -translate-x-1/2 z-40 flex items-center gap-3">
       <button @click="toggleTheme"
         class="px-4 py-2.5 rounded-lg border shadow-md hover:shadow-lg flex items-center gap-2 cursor-pointer"
@@ -69,18 +67,42 @@
     <main class="grid grid-cols-12 gap-8 relative z-10">
       <div class="col-span-8 space-y-6">
         <div class="bg-slate-900/30 backdrop-blur-xl border border-white/10 rounded-3xl p-10 shadow-2xl">
-          <div class="flex justify-between items-center mb-12 px-4">
+          <div class="flex justify-between items-center px-4">
             <h2 class="text-slate-300 font-medium tracking-widest uppercase text-sm pl-2">
               {{ fontType === 'chinese' ? '系统实时指标' : 'Real-time Metrics' }}
             </h2>
             <div class="flex gap-6 font-mono text-sm pr-2">
               <span class="text-cyan-400 font-semibold">
-                {{ mode === 'standalone' ? '本机节点' : `节点数: ${Object.keys(nodesData).length}` }}
+                {{ fontType === 'chinese' ? '节点数' : 'Nodes' }}: {{ nodeCount }}
               </span>
-              <span class="text-purple-400 font-semibold">数据点: {{ totalDataPoints }}</span>
+              <span class="text-purple-400 font-semibold">{{ fontType === 'chinese' ? '数据点' : 'Points' }}: {{ totalDataPoints }}</span>
             </div>
           </div>
-          <div ref="chartRef" class="h-80 w-full bg-slate-800/20 rounded-2xl border border-slate-600/30 shadow-inner mt-8" style="min-height: 320px;"></div>
+
+          <div class="flex flex-wrap gap-2 mt-6 mb-8 px-4">
+            <button
+              v-for="metric in metricOptions"
+              :key="metric.key"
+              @click="selectedMetric = metric.key"
+              class="px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-200 cursor-pointer"
+              :class="selectedMetric === metric.key
+                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow'
+                : 'bg-slate-800/40 border-slate-700 text-slate-300 hover:bg-slate-700/50'">
+              {{ fontType === 'chinese' ? metric.labelZh : metric.labelEn }}
+            </button>
+          </div>
+
+          <div class="flex justify-between items-center mb-4 px-4">
+            <p class="text-xs text-slate-400">
+              {{ fontType === 'chinese' ? '当前指标' : 'Current Metric' }}:
+              <span class="text-cyan-300 font-semibold">{{ selectedMetricLabel }}</span>
+            </p>
+            <p class="text-xs text-slate-500 font-mono">
+              {{ fontType === 'chinese' ? '单位' : 'Unit' }}: {{ selectedMetricUnit }}
+            </p>
+          </div>
+
+          <div ref="chartRef" class="h-80 w-full bg-slate-800/20 rounded-2xl border border-slate-600/30 shadow-inner mt-6" style="min-height: 320px;"></div>
         </div>
       </div>
 
@@ -110,19 +132,19 @@
           <div class="space-y-3 text-xs font-mono">
             <div class="flex justify-between">
               <span class="text-slate-400">{{ fontType === 'chinese' ? '在线节点' : 'Online Nodes' }}:</span>
-              <span class="text-purple-400 font-semibold">{{ Object.keys(nodesData).length }}</span>
+              <span class="text-purple-400 font-semibold">{{ nodeCount }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-slate-400">{{ fontType === 'chinese' ? '异常节点' : 'Abnormal Nodes' }}:</span>
               <span class="text-red-400 font-semibold">{{ abnormalNodes }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-slate-400">{{ fontType === 'chinese' ? '平均负载' : 'Avg Load' }}:</span>
-              <span class="text-purple-400">{{ averageLoad }}%</span>
+              <span class="text-slate-400">{{ fontType === 'chinese' ? '平均值' : 'Average' }}:</span>
+              <span class="text-purple-400">{{ averageMetricDisplay }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-slate-400">{{ fontType === 'chinese' ? '最高负载' : 'Max Load' }}:</span>
-              <span class="text-orange-400">{{ maxLoad }}%</span>
+              <span class="text-slate-400">{{ fontType === 'chinese' ? '峰值' : 'Max' }}:</span>
+              <span class="text-orange-400">{{ maxMetricDisplay }}</span>
             </div>
           </div>
         </div>
@@ -172,6 +194,17 @@ import { useAuthStore } from '../stores/auth'
 import { getHardwareInfo } from '../api/system'
 import { WS_BASE_URL } from '../config/env'
 
+const SUPPORTED_METRICS = ['CPU', 'MEMORY', 'DISK', 'NET_RX', 'NET_TX', 'PROCESS_COUNT']
+
+const METRIC_META = {
+  CPU: { labelZh: 'CPU 使用率', labelEn: 'CPU Usage', unit: '%', normalHigh: 80 },
+  MEMORY: { labelZh: '内存使用率', labelEn: 'Memory Usage', unit: '%', normalHigh: 80 },
+  DISK: { labelZh: '磁盘使用率', labelEn: 'Disk Usage', unit: '%', normalHigh: 85 },
+  NET_RX: { labelZh: '网络入流量', labelEn: 'Network RX', unit: 'B/s', normalHigh: null },
+  NET_TX: { labelZh: '网络出流量', labelEn: 'Network TX', unit: 'B/s', normalHigh: null },
+  PROCESS_COUNT: { labelZh: '进程数量', labelEn: 'Process Count', unit: 'count', normalHigh: 350 }
+}
+
 const auth = useAuthStore()
 const reports = ref([])
 const wsConnected = ref(false)
@@ -179,6 +212,7 @@ let reportIdCounter = 0
 
 const isDarkMode = ref(localStorage.getItem('theme') === 'dark')
 const fontType = ref(localStorage.getItem('fontType') || 'chinese')
+const selectedMetric = ref(localStorage.getItem('selectedMetric') || 'CPU')
 
 watch(isDarkMode, () => {
   localStorage.setItem('theme', isDarkMode.value ? 'dark' : 'light')
@@ -187,36 +221,71 @@ watch(isDarkMode, () => {
 watch(fontType, () => {
   localStorage.setItem('fontType', fontType.value)
 })
+watch(selectedMetric, () => {
+  localStorage.setItem('selectedMetric', selectedMetric.value)
+  if (myChart) myChart.setOption(getChartOption(), true)
+})
 
 const chartRef = ref(null)
 let myChart = null
-const nodesData = reactive({})
-const timeLabels = ref([])
+const metricSeries = reactive({})
+const metricLabels = reactive({})
 const mode = ref('standalone')
+
 const hardwareInfo = ref({
   cpuModel: '-',
   totalMemoryBytes: 0
 })
 
+for (const metric of SUPPORTED_METRICS) {
+  metricSeries[metric] = {}
+  metricLabels[metric] = []
+}
+
+const metricOptions = computed(() => SUPPORTED_METRICS.map((key) => ({
+  key,
+  labelZh: METRIC_META[key].labelZh,
+  labelEn: METRIC_META[key].labelEn
+})))
+
+const selectedMetricMeta = computed(() => METRIC_META[selectedMetric.value] || METRIC_META.CPU)
+const selectedMetricLabel = computed(() =>
+  fontType.value === 'chinese' ? selectedMetricMeta.value.labelZh : selectedMetricMeta.value.labelEn)
+const selectedMetricUnit = computed(() => selectedMetricMeta.value.unit)
+
+const activeNodesData = computed(() => metricSeries[selectedMetric.value] || {})
+const activeLabels = computed(() => metricLabels[selectedMetric.value] || [])
+
+const nodeCount = computed(() => Object.keys(activeNodesData.value).length)
 const totalDataPoints = computed(() =>
-  Object.values(nodesData).reduce((total, data) => total + data.length, 0))
+  Object.values(activeNodesData.value).reduce((total, data) => total + data.length, 0))
 
-const abnormalNodes = computed(() =>
-  Object.keys(nodesData).filter(h => {
-    const d = nodesData[h]
-    return d.length > 0 && d[d.length - 1] > 80
-  }).length)
+const abnormalNodes = computed(() => {
+  const threshold = selectedMetricMeta.value.normalHigh
+  if (threshold == null) return 0
+  return Object.keys(activeNodesData.value).filter((h) => {
+    const d = activeNodesData.value[h]
+    return d.length > 0 && d[d.length - 1] > threshold
+  }).length
+})
 
-const averageLoad = computed(() => {
-  const vals = Object.values(nodesData).map(d => d.length > 0 ? d[d.length - 1] : 0).filter(v => v > 0)
+const averageMetric = computed(() => {
+  const vals = Object.values(activeNodesData.value)
+    .map((d) => d.length > 0 ? d[d.length - 1] : 0)
+    .filter((v) => v > 0)
   if (!vals.length) return 0
-  return (vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1)
+  return vals.reduce((s, v) => s + v, 0) / vals.length
 })
 
-const maxLoad = computed(() => {
-  const vals = Object.values(nodesData).map(d => d.length > 0 ? d[d.length - 1] : 0).filter(v => v > 0)
-  return vals.length ? Math.max(...vals).toFixed(1) : 0
+const maxMetric = computed(() => {
+  const vals = Object.values(activeNodesData.value)
+    .map((d) => d.length > 0 ? d[d.length - 1] : 0)
+    .filter((v) => v > 0)
+  return vals.length ? Math.max(...vals) : 0
 })
+
+const averageMetricDisplay = computed(() => formatMetricValue(averageMetric.value, selectedMetric.value))
+const maxMetricDisplay = computed(() => formatMetricValue(maxMetric.value, selectedMetric.value))
 
 const hardwareCpuModel = computed(() => hardwareInfo.value.cpuModel || '-')
 const hardwareMemory = computed(() => formatBytes(hardwareInfo.value.totalMemoryBytes))
@@ -230,7 +299,7 @@ const updateBodyTheme = () => {
 }
 
 const getNodeColor = (hostname) => {
-  const colors = ['#22d3ee','#a855f7','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#14b8a6']
+  const colors = ['#22d3ee', '#a855f7', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6']
   const index = hostname.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % colors.length
   return colors[index]
 }
@@ -245,6 +314,20 @@ const formatBytes = (bytes) => {
     i += 1
   }
   return `${size.toFixed(i >= 3 ? 1 : 0)}${units[i]}`
+}
+
+const formatMetricValue = (value, metricName) => {
+  if (!value || value <= 0) return '-'
+  if (metricName === 'CPU' || metricName === 'MEMORY' || metricName === 'DISK') {
+    return `${value.toFixed(1)}%`
+  }
+  if (metricName === 'NET_RX' || metricName === 'NET_TX') {
+    return `${formatBytes(value)}/s`
+  }
+  if (metricName === 'PROCESS_COUNT') {
+    return `${Math.round(value)}`
+  }
+  return value.toFixed(1)
 }
 
 const loadHardwareInfo = async () => {
@@ -263,8 +346,46 @@ const loadHardwareInfo = async () => {
   }
 }
 
+const normalizeMetricName = (name) => {
+  if (!name) return null
+  const n = String(name).toUpperCase()
+  if (n === 'MEM') return 'MEMORY'
+  if (n === 'PROCESS') return 'PROCESS_COUNT'
+  if (SUPPORTED_METRICS.includes(n)) return n
+  return null
+}
+
+const getYAxisOption = () => {
+  const metricName = selectedMetric.value
+  if (metricName === 'CPU' || metricName === 'MEMORY' || metricName === 'DISK') {
+    return {
+      type: 'value',
+      max: 100,
+      splitLine: { lineStyle: { color: '#1e293b' } },
+      axisLabel: { color: '#64748b', formatter: '{value}%' }
+    }
+  }
+  if (metricName === 'NET_RX' || metricName === 'NET_TX') {
+    return {
+      type: 'value',
+      splitLine: { lineStyle: { color: '#1e293b' } },
+      axisLabel: {
+        color: '#64748b',
+        formatter: (value) => formatBytes(value)
+      }
+    }
+  }
+  return {
+    type: 'value',
+    splitLine: { lineStyle: { color: '#1e293b' } },
+    axisLabel: { color: '#64748b', formatter: (value) => Math.round(value) }
+  }
+}
+
 const getChartOption = () => {
-  const series = Object.keys(nodesData).map(hostname => ({
+  const nodes = activeNodesData.value
+  const labels = activeLabels.value
+  const series = Object.keys(nodes).map((hostname) => ({
     name: hostname,
     type: 'line',
     smooth: true,
@@ -276,17 +397,39 @@ const getChartOption = () => {
         { offset: 1, color: getNodeColor(hostname) + '00' }
       ])
     },
-    data: nodesData[hostname] || []
+    data: nodes[hostname] || []
   }))
+
   return {
     backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis', backgroundColor: '#1e293b', borderColor: 'rgba(34,211,238,0.3)', borderWidth: 1, textStyle: { color: '#fff' } },
-    legend: { data: Object.keys(nodesData), textStyle: { color: '#94a3b8' }, right: '10%', top: '5%' },
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#1e293b',
+      borderColor: 'rgba(34,211,238,0.3)',
+      borderWidth: 1,
+      textStyle: { color: '#fff' },
+      formatter: (params) => {
+        if (!params || !params.length) return ''
+        const title = params[0].axisValue
+        const lines = params.map((p) => `${p.marker} ${p.seriesName}: ${formatMetricValue(Number(p.value || 0), selectedMetric.value)}`)
+        return [title, ...lines].join('<br/>')
+      }
+    },
+    legend: { data: Object.keys(nodes), textStyle: { color: '#94a3b8' }, right: '10%', top: '5%' },
     grid: { top: '15%', left: '5%', right: '5%', bottom: '10%', containLabel: true },
-    xAxis: { type: 'category', boundaryGap: false, data: timeLabels.value, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#64748b' }, splitLine: { show: false } },
-    yAxis: { type: 'value', max: 100, splitLine: { lineStyle: { color: '#1e293b' } }, axisLabel: { color: '#64748b' } },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: labels,
+      axisLine: { lineStyle: { color: '#334155' } },
+      axisLabel: { color: '#64748b' },
+      splitLine: { show: false }
+    },
+    yAxis: getYAxisOption(),
     series,
-    animation: true, animationDuration: 300, animationEasing: 'linear'
+    animation: true,
+    animationDuration: 300,
+    animationEasing: 'linear'
   }
 }
 
@@ -302,15 +445,31 @@ const initChart = () => {
 }
 
 const updateChartData = (metric) => {
-  const { hostname, value } = metric
+  const metricName = normalizeMetricName(metric?.name)
+  if (!metricName) return
+
+  const hostname = metric?.hostname || 'unknown-node'
+  const value = Number(metric?.value)
+  if (Number.isNaN(value)) return
+
+  const labels = metricLabels[metricName]
+  const nodes = metricSeries[metricName]
+
+  if (!nodes[hostname]) nodes[hostname] = []
+  nodes[hostname].push(value)
+
   const now = new Date().toLocaleTimeString().replace(/^\D*/, '')
-  if (!nodesData[hostname]) nodesData[hostname] = []
-  nodesData[hostname].push(value)
-  const maxLength = Math.max(...Object.values(nodesData).map(d => d.length))
-  while (timeLabels.value.length < maxLength) timeLabels.value.push(now)
-  if (nodesData[hostname].length > 60) nodesData[hostname].shift()
-  if (timeLabels.value.length > 60) timeLabels.value.shift()
-  if (myChart) myChart.setOption(getChartOption(), true)
+  const maxLength = Math.max(...Object.values(nodes).map((d) => d.length), 0)
+  while (labels.length < maxLength) labels.push(now)
+
+  Object.keys(nodes).forEach((h) => {
+    if (nodes[h].length > 60) nodes[h].shift()
+  })
+  while (labels.length > 60) labels.shift()
+
+  if (myChart && metricName === selectedMetric.value) {
+    myChart.setOption(getChartOption(), true)
+  }
 }
 
 let connectionCheckInterval = null
@@ -360,9 +519,14 @@ const handleResize = () => { if (myChart) myChart.resize() }
 onMounted(async () => {
   updateBodyTheme()
   const now = new Date()
+  const initialLabels = []
   for (let i = 59; i >= 0; i--) {
-    timeLabels.value.push(new Date(now - i * 1000).toLocaleTimeString().replace(/^\D*/, ''))
+    initialLabels.push(new Date(now - i * 1000).toLocaleTimeString().replace(/^\D*/, ''))
   }
+  for (const metric of SUPPORTED_METRICS) {
+    metricLabels[metric] = [...initialLabels]
+  }
+
   await loadHardwareInfo()
   nextTick(() => {
     initChart()

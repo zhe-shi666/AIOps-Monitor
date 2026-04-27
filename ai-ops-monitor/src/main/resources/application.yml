@@ -56,3 +56,5 @@ monitor:
   threshold:
     cpu: 70
     memory: 90
+    disk: 85
+    process-count: 400
