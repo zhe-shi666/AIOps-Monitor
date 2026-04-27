@@ -95,18 +95,21 @@
 **1. 环境依赖**
 * JDK 17+
 * Node.js 18+
-* MySQL 8.0+（可以用docker拉起/自己配置）
-* redis （可以用docker拉起/自己配置）
+* Docker / Docker Compose（推荐，一键拉起 MySQL、Redis、Prometheus、Ollama）
 
 **2. 配置启动**
-1. **一键拉起中间件环境（mysql、redis、(prom可无)）**：打开终端，运行：docker-compose up -d
-1. **数据库**：执行根目录下 mysql初始化脚本。
-2. **API Key**：在 application.yml 中配置你的 LLM (DeepSeek/GPT) 秘钥。我使用的是本地的ollama。（用LLM的话，maven也需要修改一下）
-3. **启动后端**：如果是本地模式就运行dev的配置文件，如果是集群模式就运行prod的配置文件且在每一个线程的程序实参中配置（--server.port=8081 --spring.application.name=Node-B --monitor.mode=distributed --spring.profiles.active=prod）
-4. **启动前端**：
+1. **一键拉起依赖（mysql、redis、prometheus、ollama）**：
+   `docker compose up -d`
+2. **首次拉取 Ollama 模型**（只需一次，后续会复用卷缓存）：
+   `docker compose exec ollama ollama pull qwen3:0.6b`
+3. **数据库**：执行根目录下 `mysql.sql` 初始化脚本。
+4. **启动后端**：本地开发可用 `dev`，多节点可用 `prod` 并传入参数（例如 `--server.port=8081 --spring.application.name=Node-B --monitor.mode=distributed --spring.profiles.active=prod`）。
+5. **启动前端**：
 * cd aiops-vue
 * npm install
 * npm run dev
+
+> AI 配置默认使用 Ollama：`OLLAMA_BASE_URL=http://localhost:11434`，模型默认 `qwen3:0.6b`。可通过环境变量 `OLLAMA_BASE_URL`、`OLLAMA_MODEL` 覆盖。
 
 ---
 ## 🧠 技术亮点 (For Interview)
