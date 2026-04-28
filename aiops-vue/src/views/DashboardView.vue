@@ -105,7 +105,6 @@
 
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
-import * as echarts from 'echarts'
 import SockJS from 'sockjs-client'
 import Stomp from 'stompjs'
 import { useAuthStore } from '../stores/auth'
@@ -138,6 +137,7 @@ watch(selectedMetric, () => {
 
 const chartRef = ref(null)
 let myChart = null
+let chartRuntime = null
 const metricSeries = reactive({})
 const metricLabels = reactive({})
 
@@ -203,6 +203,28 @@ const getNodeColor = (hostname) => {
   const colors = ['#22d3ee', '#a855f7', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6']
   const index = hostname.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % colors.length
   return colors[index]
+}
+
+const loadChartRuntime = async () => {
+  if (chartRuntime) return chartRuntime
+  const [core, charts, components, renderers] = await Promise.all([
+    import('echarts/core'),
+    import('echarts/charts'),
+    import('echarts/components'),
+    import('echarts/renderers')
+  ])
+  core.use([
+    charts.LineChart,
+    components.GridComponent,
+    components.TooltipComponent,
+    components.LegendComponent,
+    renderers.CanvasRenderer
+  ])
+  chartRuntime = {
+    init: core.init,
+    graphic: core.graphic
+  }
+  return chartRuntime
 }
 
 const formatBytes = (bytes) => {
@@ -285,6 +307,7 @@ const getYAxisOption = () => {
 const getChartOption = () => {
   const nodes = activeNodesData.value
   const labels = activeLabels.value
+  const linearGradient = chartRuntime?.graphic?.LinearGradient
   const series = Object.keys(nodes).map((hostname) => ({
     name: hostname,
     type: 'line',
@@ -292,10 +315,12 @@ const getChartOption = () => {
     showSymbol: false,
     lineStyle: { width: 3, color: getNodeColor(hostname), shadowColor: getNodeColor(hostname), shadowBlur: 10 },
     areaStyle: {
-      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-        { offset: 0, color: getNodeColor(hostname) + '4d' },
-        { offset: 1, color: getNodeColor(hostname) + '00' }
-      ])
+      color: linearGradient
+        ? new linearGradient(0, 0, 0, 1, [
+          { offset: 0, color: getNodeColor(hostname) + '4d' },
+          { offset: 1, color: getNodeColor(hostname) + '00' }
+        ])
+        : getNodeColor(hostname) + '22'
     },
     data: nodes[hostname] || []
   }))
@@ -333,12 +358,13 @@ const getChartOption = () => {
   }
 }
 
-const initChart = () => {
+const initChart = async () => {
+  await loadChartRuntime()
   nextTick(() => {
     setTimeout(() => {
       if (!chartRef.value) return
       if (myChart) { myChart.dispose(); myChart = null }
-      myChart = echarts.init(chartRef.value)
+      myChart = chartRuntime.init(chartRef.value)
       myChart.setOption(getChartOption())
     }, 200)
   })
@@ -411,8 +437,8 @@ onMounted(async () => {
   }
 
   await loadHardwareInfo()
+  await initChart()
   nextTick(() => {
-    initChart()
     initWebSocket()
     window.addEventListener('resize', handleResize)
   })

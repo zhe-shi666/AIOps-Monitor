@@ -113,6 +113,7 @@ const { isZh, t } = useI18n({
   'group.admin': { zh: '管理', en: 'Admin' },
   'nav.overview': { zh: '总览看板', en: 'Overview' },
   'nav.aiExpert': { zh: 'AI 专家', en: 'AI Expert' },
+  'nav.workbench': { zh: '事件工作台', en: 'Workbench' },
   'nav.targets': { zh: '监控目标', en: 'Targets' },
   'nav.incidents': { zh: '告警中心', en: 'Incidents' },
   'nav.thresholds': { zh: '阈值策略', en: 'Thresholds' },
@@ -131,6 +132,7 @@ const { isZh, t } = useI18n({
 
 const monitorNav = computed(() => [
   { path: '/', label: t('nav.overview') },
+  { path: '/workbench', label: t('nav.workbench') },
   { path: '/ai-expert', label: t('nav.aiExpert') },
   { path: '/targets', label: t('nav.targets') },
   { path: '/incidents', label: t('nav.incidents') }
@@ -154,6 +156,10 @@ const headerMap = computed(() => ({
   '/ai-expert': {
     title: isZh.value ? 'AI 专家中心' : 'AI Expert Console',
     subtitle: isZh.value ? '调查、诊断、执行与复盘的统一工作流' : 'Unified workflow for investigations, actions, and postmortems'
+  },
+  '/workbench': {
+    title: isZh.value ? '事件工作台' : 'Event Workbench',
+    subtitle: isZh.value ? '告警到调查到执行的闭环联动作业台' : 'Closed-loop cockpit from incidents to investigation and execution'
   },
   '/incidents': {
     title: isZh.value ? '告警事件中心' : 'Incident Center',

@@ -568,11 +568,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { marked } from 'marked'
 import SockJS from 'sockjs-client'
 import Stomp from 'stompjs'
 import { ElMessage } from 'element-plus'
+import { useRoute } from 'vue-router'
 import { WS_BASE_URL } from '../config/env'
 import { useAuthStore } from '../stores/auth'
 import { useLocaleMode } from '../composables/useLocaleMode'
@@ -597,6 +598,7 @@ import {
 } from '../api/investigations'
 
 const auth = useAuthStore()
+const route = useRoute()
 const { locale } = useLocaleMode()
 
 const activeTab = ref('investigations')
@@ -811,6 +813,14 @@ async function refreshInvestigations(silent = true) {
       return
     }
 
+    const routeInvestigationId = resolveRouteInvestigationId()
+    if (routeInvestigationId && investigations.value.some((x) => x.id === routeInvestigationId)) {
+      if (selectedInvestigationId.value !== routeInvestigationId) {
+        await selectInvestigation(routeInvestigationId)
+      }
+      return
+    }
+
     const exists = investigations.value.some((x) => x.id === selectedInvestigationId.value)
     if (!exists) {
       await selectInvestigation(investigations.value[0].id)
@@ -829,6 +839,13 @@ async function refreshInvestigations(silent = true) {
   } finally {
     loadingInvestigations.value = false
   }
+}
+
+function resolveRouteInvestigationId() {
+  const raw = route.query?.investigationId
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return n
 }
 
 async function selectInvestigation(id) {
@@ -1201,6 +1218,21 @@ onMounted(async () => {
     loadQualitySummary(true)
   }, 15000)
 })
+
+watch(
+  () => route.query?.investigationId,
+  async () => {
+    const id = resolveRouteInvestigationId()
+    if (!id) return
+    if (!investigations.value.length) {
+      await refreshInvestigations(true)
+      return
+    }
+    if (investigations.value.some((x) => x.id === id) && selectedInvestigationId.value !== id) {
+      await selectInvestigation(id)
+    }
+  }
+)
 
 onUnmounted(() => {
   wsConnected.value = false

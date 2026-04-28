@@ -1,6 +1,7 @@
 import api from './http'
 
 export const getInvestigations = (params) => api.get('/api/investigations', { params })
+export const createInvestigation = (payload) => api.post('/api/investigations', payload || {})
 export const getInvestigationQualitySummary = () => api.get('/api/investigations/quality/summary')
 export const getInvestigationDetail = (id) => api.get(`/api/investigations/${id}`)
 export const getInvestigationTimeline = (id) => api.get(`/api/investigations/${id}/timeline`)
