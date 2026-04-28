@@ -16,8 +16,8 @@ public class RedisPubSubConfig {
                                             MessageListenerAdapter listenerAdapter) {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-        // 订阅名为 _topic_metrics 的频道（对应 DistributedPublisher 里的命名转换）
-        container.addMessageListener(listenerAdapter, new PatternTopic("_topic_metrics"));
+        // 订阅所有 _topic_* 频道（可转发 metrics、ai-reports、investigations 等）
+        container.addMessageListener(listenerAdapter, new PatternTopic("_topic_*"));
         return container;
     }
 

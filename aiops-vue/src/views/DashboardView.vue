@@ -345,11 +345,12 @@ const initChart = () => {
 }
 
 const updateChartData = (metric) => {
-  const metricName = normalizeMetricName(metric?.name)
+  const source = metric?.payload && typeof metric.payload === 'object' ? metric.payload : metric
+  const metricName = normalizeMetricName(source?.name)
   if (!metricName) return
 
-  const hostname = metric?.hostname || 'unknown-node'
-  const value = Number(metric?.value)
+  const hostname = source?.hostname || 'unknown-node'
+  const value = Number(source?.value)
   if (Number.isNaN(value)) return
 
   const labels = metricLabels[metricName]

@@ -4,6 +4,7 @@ import com.aiops.monitor.model.dto.MetricDTO;
 import com.aiops.monitor.model.entity.SystemMetricsHistory;
 import com.aiops.monitor.repository.SystemMetricsRepository;
 import com.aiops.monitor.service.AiService;
+import com.aiops.monitor.service.LocalCollectorOwnershipService;
 import com.aiops.monitor.service.PromptDataBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,9 @@ public class CollectorScheduler {
     private PromptDataBuilder dataBuilder;
     @Autowired
     private com.aiops.monitor.service.MetricsPublisher metricsPublisher;
+
+    @Autowired
+    private LocalCollectorOwnershipService localCollectorOwnershipService;
 
     /*@Autowired
     private MetricsExporter metricsExporter;*/
@@ -59,6 +63,8 @@ public class CollectorScheduler {
 
         // 0. 统一获取节点名称，避免多次重复调用
         String nodeName = environment.getProperty("spring.application.name", "Default-Node");
+        LocalCollectorOwnershipService.LocalOwnership ownership = localCollectorOwnershipService.resolve(nodeName);
+        String effectiveHostname = ownership == null ? nodeName : ownership.hostname();
 
         // 1. 存入数据库
         SystemMetricsHistory history = new SystemMetricsHistory();
@@ -69,7 +75,11 @@ public class CollectorScheduler {
         history.setNetTxBytesPerSec(netTxBytesPerSec);
         history.setProcessCount(processCount);
         history.setTimestamp(java.time.LocalDateTime.now());
-        history.setHostname(nodeName);
+        history.setHostname(effectiveHostname);
+        if (ownership != null) {
+            history.setUserId(ownership.userId());
+            history.setTargetId(ownership.targetId());
+        }
         metricsRepository.save(history);
 
         // 2. 构建并发送给前端 CPU 指标
@@ -77,7 +87,7 @@ public class CollectorScheduler {
                 .name("CPU")
                 .value(cpuUsage)
                 .ip("127.0.0.1")
-                .hostname(nodeName)
+                .hostname(effectiveHostname)
                 .timestamp(timestamp)
                 .build();
         metricsPublisher.send("/topic/metrics", cpuMetric);
@@ -87,7 +97,7 @@ public class CollectorScheduler {
                 .name("MEMORY")
                 .value(memUsage)
                 .ip("127.0.0.1")
-                .hostname(nodeName)
+                .hostname(effectiveHostname)
                 .timestamp(timestamp)
                 .build();
         metricsPublisher.send("/topic/metrics", memMetric);
@@ -96,7 +106,7 @@ public class CollectorScheduler {
                 .name("DISK")
                 .value(diskUsage)
                 .ip("127.0.0.1")
-                .hostname(nodeName)
+                .hostname(effectiveHostname)
                 .timestamp(timestamp)
                 .build();
         metricsPublisher.send("/topic/metrics", diskMetric);
@@ -105,7 +115,7 @@ public class CollectorScheduler {
                 .name("NET_RX")
                 .value(netRxBytesPerSec)
                 .ip("127.0.0.1")
-                .hostname(nodeName)
+                .hostname(effectiveHostname)
                 .timestamp(timestamp)
                 .build();
         metricsPublisher.send("/topic/metrics", netRxMetric);
@@ -114,7 +124,7 @@ public class CollectorScheduler {
                 .name("NET_TX")
                 .value(netTxBytesPerSec)
                 .ip("127.0.0.1")
-                .hostname(nodeName)
+                .hostname(effectiveHostname)
                 .timestamp(timestamp)
                 .build();
         metricsPublisher.send("/topic/metrics", netTxMetric);
@@ -123,13 +133,13 @@ public class CollectorScheduler {
                 .name("PROCESS_COUNT")
                 .value((double) processCount)
                 .ip("127.0.0.1")
-                .hostname(nodeName)
+                .hostname(effectiveHostname)
                 .timestamp(timestamp)
                 .build();
         metricsPublisher.send("/topic/metrics", processMetric);
 
         log.debug("📡 [{}] 实时指标已推送并入库: CPU {}%, MEM {}%, DISK {}%, RX {}B/s, TX {}B/s, PROC {}",
-                nodeName,
+                effectiveHostname,
                 String.format("%.1f", cpuUsage),
                 String.format("%.1f", memUsage),
                 String.format("%.1f", diskUsage),
@@ -145,6 +155,8 @@ public class CollectorScheduler {
     public void aiPredictiveMaintenance() {
         // 1. 获取当前节点名称
         String currentHost = environment.getProperty("spring.application.name", "Default-Node");
+        LocalCollectorOwnershipService.LocalOwnership ownership = localCollectorOwnershipService.resolve(currentHost);
+        String effectiveHostname = ownership == null ? currentHost : ownership.hostname();
 
         // 2. 根据模式决定查询范围（策略分流）
         List<SystemMetricsHistory> history;
@@ -157,8 +169,8 @@ public class CollectorScheduler {
             analysisScope = "全集群整体";
         } else {
             // 本地模式：保镖视角，只看自己
-            history = metricsRepository.findTop20ByHostnameOrderByTimestampDesc(currentHost);
-            analysisScope = "本节点 (" + currentHost + ")";
+            history = metricsRepository.findTop20ByHostnameOrderByTimestampDesc(effectiveHostname);
+            analysisScope = "本节点 (" + effectiveHostname + ")";
         }
 
         if (history.isEmpty()) return;

@@ -22,6 +22,8 @@ public class InvestigationOrchestrator {
     private final AiInvestigationRepository aiInvestigationRepository;
     private final AiObservationRepository aiObservationRepository;
     private final AiReportSnapshotRepository aiReportSnapshotRepository;
+    private final InvestigationIntelligenceService investigationIntelligenceService;
+    private final InvestigationEventPublisher eventPublisher;
 
     @Transactional
     public AiInvestigation openFromIncident(IncidentLog incident) {
@@ -65,6 +67,19 @@ public class InvestigationOrchestrator {
         snapshot.setReportMarkdown(buildInitialReportMarkdown(saved, incident));
         snapshot.setCreatedAt(LocalDateTime.now());
         aiReportSnapshotRepository.save(snapshot);
+
+        eventPublisher.publish(
+                saved.getUserId(),
+                "INVESTIGATION_CREATED",
+                saved.getId(),
+                "Investigation opened from incident",
+                java.util.Map.of(
+                        "incidentId", incident.getId(),
+                        "severity", saved.getSeverity(),
+                        "metric", incident.getMetricName()
+                )
+        );
+        investigationIntelligenceService.autoGenerateFromIncident(saved.getId(), saved.getUserId());
 
         log.info("🧭 Investigation 已创建: id={}, incidentId={}", saved.getId(), incident.getId());
         return saved;

@@ -44,6 +44,18 @@ public class AiActionPlan {
     @Column(length = 20)
     private String status = "PROPOSED";
 
+    @Column(name = "approved_by", length = 100)
+    private String approvedBy;
+
+    @Column(name = "approved_at")
+    private LocalDateTime approvedAt;
+
+    @Column(name = "approval_note", columnDefinition = "text")
+    private String approvalNote;
+
+    @Column(name = "retry_count")
+    private Integer retryCount = 0;
+
     @Column(name = "rollback_plan", columnDefinition = "text")
     private String rollbackPlan;
 

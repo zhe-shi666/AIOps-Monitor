@@ -31,17 +31,23 @@ public class PromptDataBuilder {
             // 格式化时间
             String timeStr = record.getTimestamp().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
 
-            // 3. 构建结构化数据行
-            // 增加节点标识是非常关键的，尤其是在分布式模式下，AI 需要根据 hostname 来判断是哪个节点在报警
-            sb.append(String.format("- [%s] 节点: **%s** | CPU 使用率: %.1f%% | 内存占用: %.1f%%\n",
+            // 3. 构建结构化数据行（全指标）
+            sb.append(String.format(
+                    "- [%s] 节点: **%s** | CPU: %.1f%% | MEM: %.1f%% | DISK: %.1f%% | RX: %.0fB/s | TX: %.0fB/s | PROC: %d\n",
                     timeStr,
                     node,
                     record.getCpuUsage(),
-                    record.getMemUsage()));
+                    record.getMemUsage(),
+                    record.getDiskUsage() == null ? 0d : record.getDiskUsage(),
+                    record.getNetRxBytesPerSec() == null ? 0d : record.getNetRxBytesPerSec(),
+                    record.getNetTxBytesPerSec() == null ? 0d : record.getNetTxBytesPerSec(),
+                    record.getProcessCount() == null ? 0 : record.getProcessCount()
+            ));
         }
 
         // 4. 补充分析指令引导（可选，能让 AI 输出更稳定）
-        sb.append("\n请基于以上数据，分析系统负载趋势。如果存在 CPU 持续波动或内存溢出风险，请指出疑似节点并提供修复建议。");
+        sb.append("\n请基于以上多维指标分析风险，重点识别：CPU/MEM/DISK 饱和、网络突刺、进程异常增长。")
+                .append("请给出根因假设、排查命令、修复动作及回滚方案。");
 
         return sb.toString();
     }

@@ -1,10 +1,14 @@
 package com.aiops.monitor.controller;
 
 import com.aiops.monitor.model.dto.AiActionExecuteRequest;
+import com.aiops.monitor.model.dto.AiActionApproveRequest;
 import com.aiops.monitor.model.dto.AiActionPlanCreateRequest;
+import com.aiops.monitor.model.dto.AiActionRetryRequest;
 import com.aiops.monitor.model.dto.AiHypothesisCreateRequest;
 import com.aiops.monitor.model.dto.AiInvestigationCreateRequest;
+import com.aiops.monitor.model.dto.AiInvestigationGenerateRequest;
 import com.aiops.monitor.model.dto.AiObservationCreateRequest;
+import com.aiops.monitor.model.dto.AiPostmortemGenerateRequest;
 import com.aiops.monitor.model.dto.AiReportSnapshotCreateRequest;
 import com.aiops.monitor.model.entity.AiActionPlan;
 import com.aiops.monitor.model.entity.AiActionRun;
@@ -20,6 +24,9 @@ import com.aiops.monitor.repository.AiInvestigationRepository;
 import com.aiops.monitor.repository.AiObservationRepository;
 import com.aiops.monitor.repository.AiReportSnapshotRepository;
 import com.aiops.monitor.service.CurrentUserService;
+import com.aiops.monitor.service.InvestigationEventPublisher;
+import com.aiops.monitor.service.InvestigationIntelligenceService;
+import com.aiops.monitor.service.InvestigationQualityService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -51,6 +58,9 @@ public class InvestigationController {
     private final AiActionRunRepository aiActionRunRepository;
     private final AiReportSnapshotRepository aiReportSnapshotRepository;
     private final CurrentUserService currentUserService;
+    private final InvestigationQualityService investigationQualityService;
+    private final InvestigationIntelligenceService investigationIntelligenceService;
+    private final InvestigationEventPublisher investigationEventPublisher;
 
     @GetMapping
     public ResponseEntity<Page<AiInvestigation>> list(@RequestParam(defaultValue = "0") int page,
@@ -64,6 +74,12 @@ public class InvestigationController {
                 ? aiInvestigationRepository.findByUserIdOrderByCreatedAtDesc(user.getId(), pageable)
                 : aiInvestigationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(user.getId(), normalizedStatus, pageable);
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/quality/summary")
+    public ResponseEntity<Map<String, Object>> qualitySummary(Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        return ResponseEntity.ok(investigationQualityService.buildSummary(user.getId()));
     }
 
     @PostMapping
@@ -94,6 +110,13 @@ public class InvestigationController {
         result.put("severity", saved.getSeverity());
         result.put("triggerSource", saved.getTriggerSource());
         result.put("createdAt", saved.getCreatedAt());
+        investigationEventPublisher.publish(
+                user.getId(),
+                "INVESTIGATION_CREATED",
+                saved.getId(),
+                "Manual investigation created",
+                Map.of("status", saved.getStatus(), "severity", saved.getSeverity())
+        );
         return ResponseEntity.ok(result);
     }
 
@@ -182,7 +205,10 @@ public class InvestigationController {
                         Map.of(
                                 "status", safe(action.getStatus(), "PROPOSED"),
                                 "riskLevel", safe(action.getRiskLevel(), "MEDIUM"),
-                                "requiresApproval", action.isRequiresApproval()
+                                "requiresApproval", action.isRequiresApproval(),
+                                "approvedBy", safe(action.getApprovedBy(), "-"),
+                                "approvedAt", action.getApprovedAt() == null ? "-" : action.getApprovedAt().toString(),
+                                "retryCount", action.getRetryCount() == null ? 0 : action.getRetryCount()
                         )
                 )));
 
@@ -229,6 +255,45 @@ public class InvestigationController {
         result.put("id", investigation.getId());
         result.put("status", investigation.getStatus());
         result.put("closedAt", investigation.getClosedAt());
+        investigationEventPublisher.publish(
+                user.getId(),
+                "INVESTIGATION_CLOSED",
+                investigation.getId(),
+                "Investigation closed",
+                Map.of("closedAt", investigation.getClosedAt().toString())
+        );
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/ai-generate")
+    public ResponseEntity<Map<String, Object>> generateStructuredResult(@PathVariable Long id,
+                                                                        @RequestBody(required = false) AiInvestigationGenerateRequest request,
+                                                                        Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        String promptHint = request == null ? null : normalize(request.getPromptHint());
+        boolean includePostmortem = request != null && Boolean.TRUE.equals(request.getIncludePostmortem());
+        Map<String, Object> result = investigationIntelligenceService.generateAndPersist(
+                id,
+                user.getId(),
+                user.getUsername(),
+                promptHint,
+                includePostmortem
+        );
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/postmortem-draft")
+    public ResponseEntity<Map<String, Object>> generatePostmortem(@PathVariable Long id,
+                                                                  @RequestBody(required = false) AiPostmortemGenerateRequest request,
+                                                                  Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        String additionalContext = request == null ? null : normalize(request.getAdditionalContext());
+        Map<String, Object> result = investigationIntelligenceService.generatePostmortemDraft(
+                id,
+                user.getId(),
+                user.getUsername(),
+                additionalContext
+        );
         return ResponseEntity.ok(result);
     }
 
@@ -262,6 +327,17 @@ public class InvestigationController {
         result.put("metricName", saved.getMetricName());
         result.put("metricValue", saved.getMetricValue());
         result.put("observedAt", saved.getObservedAt());
+        investigationEventPublisher.publish(
+                user.getId(),
+                "OBSERVATION_CREATED",
+                id,
+                "Observation appended",
+                Map.of(
+                        "observationId", saved.getId(),
+                        "type", safe(saved.getType(), "METRIC"),
+                        "metric", safe(saved.getMetricName(), "N/A")
+                )
+        );
         return ResponseEntity.ok(result);
     }
 
@@ -301,6 +377,17 @@ public class InvestigationController {
         result.put("status", saved.getStatus());
         result.put("rankOrder", saved.getRankOrder());
         result.put("confidence", saved.getConfidence());
+        investigationEventPublisher.publish(
+                user.getId(),
+                "HYPOTHESIS_CREATED",
+                id,
+                "Hypothesis created",
+                Map.of(
+                        "hypothesisId", saved.getId(),
+                        "status", saved.getStatus(),
+                        "rankOrder", saved.getRankOrder()
+                )
+        );
         return ResponseEntity.ok(result);
     }
 
@@ -336,12 +423,24 @@ public class InvestigationController {
         result.put("status", saved.getStatus());
         result.put("requiresApproval", saved.isRequiresApproval());
         result.put("riskLevel", saved.getRiskLevel());
+        investigationEventPublisher.publish(
+                user.getId(),
+                "ACTION_PLAN_CREATED",
+                id,
+                "Action plan created",
+                Map.of(
+                        "actionId", saved.getId(),
+                        "status", saved.getStatus(),
+                        "riskLevel", safe(saved.getRiskLevel(), "MEDIUM")
+                )
+        );
         return ResponseEntity.ok(result);
     }
 
     @PostMapping("/{id}/actions/{actionId}/approve")
     public ResponseEntity<Map<String, Object>> approveAction(@PathVariable Long id,
                                                              @PathVariable Long actionId,
+                                                             @RequestBody(required = false) AiActionApproveRequest request,
                                                              Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
         requireInvestigation(id, user.getId());
@@ -352,14 +451,33 @@ public class InvestigationController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "动作已执行，无法重复审批");
         }
 
+        if ("APPROVED".equalsIgnoreCase(actionPlan.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "动作已审批，无法重复审批");
+        }
+
         actionPlan.setStatus("APPROVED");
+        actionPlan.setApprovedBy(user.getUsername());
+        actionPlan.setApprovedAt(LocalDateTime.now());
+        actionPlan.setApprovalNote(normalize(request == null ? null : request.getNote()));
         actionPlan.setUpdatedAt(LocalDateTime.now());
         aiActionPlanRepository.save(actionPlan);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", actionPlan.getId());
         result.put("status", actionPlan.getStatus());
+        result.put("approvedBy", actionPlan.getApprovedBy());
+        result.put("approvedAt", actionPlan.getApprovedAt());
         result.put("updatedAt", actionPlan.getUpdatedAt());
+        investigationEventPublisher.publish(
+                user.getId(),
+                "ACTION_APPROVED",
+                id,
+                "Action approved",
+                Map.of(
+                        "actionId", actionPlan.getId(),
+                        "approvedBy", safe(actionPlan.getApprovedBy(), "unknown")
+                )
+        );
         return ResponseEntity.ok(result);
     }
 
@@ -409,6 +527,75 @@ public class InvestigationController {
         result.put("actionStatus", actionPlan.getStatus());
         result.put("runId", savedRun.getId());
         result.put("runStatus", savedRun.getStatus());
+        investigationEventPublisher.publish(
+                user.getId(),
+                "ACTION_EXECUTED",
+                id,
+                "Action execution finished",
+                Map.of(
+                        "actionId", actionPlan.getId(),
+                        "runId", savedRun.getId(),
+                        "runStatus", safe(savedRun.getStatus(), "UNKNOWN")
+                )
+        );
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/actions/{actionId}/retry")
+    public ResponseEntity<Map<String, Object>> retryAction(@PathVariable Long id,
+                                                           @PathVariable Long actionId,
+                                                           @RequestBody(required = false) AiActionRetryRequest request,
+                                                           Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        requireInvestigation(id, user.getId());
+        AiActionPlan actionPlan = aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
+
+        if (!"FAILED".equalsIgnoreCase(actionPlan.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "仅 FAILED 状态动作允许重试");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        String runStatus = resolveExecutionStatus(request == null ? null : request.getStatus());
+
+        AiActionRun actionRun = new AiActionRun();
+        actionRun.setActionPlanId(actionPlan.getId());
+        actionRun.setInvestigationId(id);
+        actionRun.setUserId(user.getId());
+        actionRun.setExecutor(user.getUsername());
+        actionRun.setExecutionMode(resolveExecutionMode(request == null ? null : request.getExecutionMode()));
+        actionRun.setStatus(runStatus);
+        actionRun.setOutputText(normalize(request == null ? null : request.getOutputText()));
+        actionRun.setErrorMessage(normalize(request == null ? null : request.getErrorMessage()));
+        actionRun.setStartedAt(now);
+        actionRun.setEndedAt(now);
+        actionRun.setCreatedAt(now);
+        AiActionRun savedRun = aiActionRunRepository.save(actionRun);
+
+        actionPlan.setStatus("SUCCESS".equalsIgnoreCase(runStatus) ? "EXECUTED" : "FAILED");
+        actionPlan.setRetryCount((actionPlan.getRetryCount() == null ? 0 : actionPlan.getRetryCount()) + 1);
+        actionPlan.setUpdatedAt(LocalDateTime.now());
+        aiActionPlanRepository.save(actionPlan);
+
+        investigationEventPublisher.publish(
+                user.getId(),
+                "ACTION_RETRY",
+                id,
+                "Action retried",
+                Map.of(
+                        "actionId", actionPlan.getId(),
+                        "runId", savedRun.getId(),
+                        "runStatus", safe(savedRun.getStatus(), "UNKNOWN"),
+                        "retryCount", actionPlan.getRetryCount() == null ? 0 : actionPlan.getRetryCount()
+                )
+        );
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("actionId", actionPlan.getId());
+        result.put("actionStatus", actionPlan.getStatus());
+        result.put("retryCount", actionPlan.getRetryCount());
+        result.put("runId", savedRun.getId());
+        result.put("runStatus", savedRun.getStatus());
         return ResponseEntity.ok(result);
     }
 
@@ -447,6 +634,17 @@ public class InvestigationController {
         result.put("format", saved.getFormat());
         result.put("createdBy", saved.getCreatedBy());
         result.put("createdAt", saved.getCreatedAt());
+        investigationEventPublisher.publish(
+                user.getId(),
+                "SNAPSHOT_CREATED",
+                id,
+                "Report snapshot created",
+                Map.of(
+                        "snapshotId", saved.getId(),
+                        "versionNo", saved.getVersionNo(),
+                        "format", safe(saved.getFormat(), "MARKDOWN")
+                )
+        );
         return ResponseEntity.ok(result);
     }
 

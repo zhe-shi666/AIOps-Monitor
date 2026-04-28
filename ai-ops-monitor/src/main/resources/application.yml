@@ -53,10 +53,18 @@ management:
 monitor:
   target:
     offline-seconds: 90
+  local:
+    default-user-id: ${MONITOR_LOCAL_DEFAULT_USER_ID:}
+    default-username: ${MONITOR_LOCAL_DEFAULT_USERNAME:}
+    auto-create-target: true
+    cache-seconds: 60
+    target-name-prefix: Local
   threshold:
     cpu: 70
     memory: 90
     disk: 85
+    net-rx: 10485760
+    net-tx: 10485760
     process-count: 400
     consecutive-breach-count: 2
     silence-seconds: 180

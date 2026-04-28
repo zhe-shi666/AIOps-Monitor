@@ -37,6 +37,25 @@
     </div>
 
     <div v-if="activeTab === 'investigations'" class="investigation-view">
+      <div v-if="qualitySummary" class="quality-grid">
+        <div class="quality-item">
+          <p class="quality-label">{{ locale === 'zh' ? '误报率' : 'False Positive' }}</p>
+          <p class="quality-value">{{ formatPercent(qualitySummary.falsePositiveRate) }}</p>
+        </div>
+        <div class="quality-item">
+          <p class="quality-label">{{ locale === 'zh' ? '执行成功率' : 'Run Success' }}</p>
+          <p class="quality-value">{{ formatPercent(qualitySummary.actionRunSuccessRate) }}</p>
+        </div>
+        <div class="quality-item">
+          <p class="quality-label">{{ locale === 'zh' ? '平均定位时长(分钟)' : 'Avg Resolve (min)' }}</p>
+          <p class="quality-value">{{ qualitySummary.mttrMinutes ?? 0 }}</p>
+        </div>
+        <div class="quality-item">
+          <p class="quality-label">{{ locale === 'zh' ? '进行中调查' : 'Open Investigations' }}</p>
+          <p class="quality-value">{{ qualitySummary.openInvestigations ?? 0 }}</p>
+        </div>
+      </div>
+
       <div class="investigation-list">
         <button
           v-for="item in investigations"
@@ -69,15 +88,25 @@
                 <span class="tone-highlight">{{ selectedDetail.investigation.severity }}</span>
               </p>
             </div>
-            <el-button
-              v-if="selectedDetail.investigation.status !== 'CLOSED'"
-              size="small"
-              type="danger"
-              plain
-              :loading="closingInvestigation"
-              @click="closeCurrentInvestigation">
-              {{ locale === 'zh' ? '关闭调查' : 'Close' }}
-            </el-button>
+            <div class="detail-head-actions">
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :loading="aiGenerating"
+                @click="runStructuredAnalysis">
+                {{ locale === 'zh' ? 'AI 结构化分析' : 'AI Analyze' }}
+              </el-button>
+              <el-button
+                v-if="selectedDetail.investigation.status !== 'CLOSED'"
+                size="small"
+                type="danger"
+                plain
+                :loading="closingInvestigation"
+                @click="closeCurrentInvestigation">
+                {{ locale === 'zh' ? '关闭调查' : 'Close' }}
+              </el-button>
+            </div>
           </div>
 
           <div v-if="selectedSnapshotHtml" class="report-snapshot prose" v-html="selectedSnapshotHtml"></div>
@@ -93,6 +122,13 @@
               resize="none"
               :placeholder="locale === 'zh' ? '可编辑当前报告，保存为新快照版本...' : 'Edit report and save as a new snapshot version...'" />
             <div class="snapshot-editor-row">
+              <el-button
+                size="small"
+                plain
+                :loading="postmortemGenerating"
+                @click="generatePostmortemDraft">
+                {{ locale === 'zh' ? '生成复盘草稿' : 'Generate Postmortem' }}
+              </el-button>
               <el-button
                 size="small"
                 type="primary"
@@ -285,10 +321,44 @@
                   @click="executeAction(action)">
                   {{ locale === 'zh' ? '执行' : 'Execute' }}
                 </el-button>
+                <el-button
+                  size="small"
+                  type="warning"
+                  plain
+                  :disabled="action.status !== 'FAILED'"
+                  :loading="actionOperatingId === action.id && actionOperatingType === 'retry'"
+                  @click="retryAction(action)">
+                  {{ locale === 'zh' ? '重试' : 'Retry' }}
+                </el-button>
               </div>
             </div>
             <div v-if="!actionPlans.length" class="ai-empty inline">
               <p>{{ locale === 'zh' ? '暂无动作计划' : 'No action plans' }}</p>
+            </div>
+          </div>
+
+          <div class="execution-head">
+            <span>{{ locale === 'zh' ? '执行记录' : 'Execution Runs' }}</span>
+            <span>{{ actionRuns.length }}</span>
+          </div>
+
+          <div class="execution-list">
+            <div v-for="run in actionRuns" :key="run.id" class="execution-item">
+              <div class="execution-item-head">
+                <p class="execution-title">#{{ run.id }} · {{ run.status || '-' }}</p>
+                <div class="action-tags">
+                  <span class="inv-chip">{{ run.executionMode || 'MANUAL' }}</span>
+                  <span class="inv-chip">{{ run.executor || '-' }}</span>
+                </div>
+              </div>
+              <p class="execution-time">
+                {{ formatDateTime(run.startedAt || run.createdAt) }} → {{ formatDateTime(run.endedAt || run.createdAt) }}
+              </p>
+              <p v-if="run.outputText" class="execution-output">{{ run.outputText }}</p>
+              <p v-if="run.errorMessage" class="execution-error">{{ run.errorMessage }}</p>
+            </div>
+            <div v-if="!actionRuns.length" class="ai-empty inline">
+              <p>{{ locale === 'zh' ? '暂无执行记录' : 'No execution runs' }}</p>
             </div>
           </div>
 
@@ -366,9 +436,13 @@ import {
   createInvestigationObservation,
   createInvestigationSnapshot,
   executeInvestigationAction,
+  generateInvestigationAi,
+  generateInvestigationPostmortem,
   getInvestigationDetail,
   getInvestigations,
-  getInvestigationTimeline
+  getInvestigationQualitySummary,
+  getInvestigationTimeline,
+  retryInvestigationAction
 } from '../api/investigations'
 
 const auth = useAuthStore()
@@ -385,6 +459,8 @@ const timelineEvents = ref([])
 const loadingInvestigations = ref(false)
 const loadingDetail = ref(false)
 const closingInvestigation = ref(false)
+const aiGenerating = ref(false)
+const postmortemGenerating = ref(false)
 const observationSubmitting = ref(false)
 const hypothesisSubmitting = ref(false)
 const actionSubmitting = ref(false)
@@ -393,6 +469,7 @@ const actionOperatingType = ref('')
 const snapshotSaving = ref(false)
 const snapshotDraft = ref('')
 const timelineCategory = ref('ALL')
+const qualitySummary = ref(null)
 
 let stompClient = null
 let reconnectTimer = null
@@ -430,6 +507,7 @@ const selectedSnapshotHtml = computed(() => {
 const observations = computed(() => selectedDetail.value?.observations || [])
 const hypotheses = computed(() => selectedDetail.value?.hypotheses || [])
 const actionPlans = computed(() => selectedDetail.value?.actionPlans || [])
+const actionRuns = computed(() => selectedDetail.value?.actionRuns || [])
 const filteredTimelineEvents = computed(() => {
   if (timelineCategory.value === 'ALL') return timelineEvents.value
   return timelineEvents.value.filter((x) => x?.category === timelineCategory.value)
@@ -457,6 +535,12 @@ function formatTimelineMeta(event) {
     .slice(0, 3)
     .map(([k, v]) => `${k}: ${v}`)
   return entries.join(' | ')
+}
+
+function formatPercent(value) {
+  const n = Number(value)
+  if (Number.isNaN(n)) return '0.00%'
+  return `${n.toFixed(2)}%`
 }
 
 function scheduleReconnect() {
@@ -487,6 +571,33 @@ function connectReportsStream() {
       if (reports.value.length > 80) {
         reports.value = reports.value.slice(0, 80)
       }
+    })
+
+    client.subscribe('/topic/investigations', async (msg) => {
+      let event = null
+      try {
+        event = JSON.parse(msg.body || '{}')
+      } catch (_e) {
+        event = null
+      }
+      const eventMessage = event?.message || (locale.value === 'zh' ? '调查事件已更新' : 'Investigation event updated')
+      reports.value.unshift({
+        id: `inv-${++reportCounter}-${Date.now()}`,
+        time: formatTime(),
+        html: marked.parse(`**${event?.eventType || 'INV_EVENT'}**  \n${eventMessage}`),
+        isRisk: /P1|CRITICAL|FAILED|风险|告警|critical|warning|alert/i.test(String(msg.body || ''))
+      })
+      if (reports.value.length > 80) {
+        reports.value = reports.value.slice(0, 80)
+      }
+
+      const currentId = selectedInvestigationId.value
+      const incomingId = Number(event?.investigationId)
+      if (currentId && incomingId && currentId === incomingId) {
+        await loadInvestigationDetail(currentId, true)
+        await loadInvestigationTimeline(currentId, true)
+      }
+      await loadQualitySummary(true)
     })
   }, () => {
     wsConnected.value = false
@@ -568,6 +679,17 @@ async function loadInvestigationTimeline(id, silent = false) {
   }
 }
 
+async function loadQualitySummary(silent = true) {
+  try {
+    const { data } = await getInvestigationQualitySummary()
+    qualitySummary.value = data || null
+  } catch (_e) {
+    if (!silent) {
+      ElMessage.error(locale.value === 'zh' ? '加载质量指标失败' : 'Failed to load quality metrics')
+    }
+  }
+}
+
 async function closeCurrentInvestigation() {
   if (!selectedDetail.value?.investigation?.id) return
   const id = selectedDetail.value.investigation.id
@@ -580,6 +702,42 @@ async function closeCurrentInvestigation() {
     ElMessage.error(locale.value === 'zh' ? '关闭调查失败' : 'Failed to close investigation')
   } finally {
     closingInvestigation.value = false
+  }
+}
+
+async function runStructuredAnalysis() {
+  const investigationId = selectedDetail.value?.investigation?.id
+  if (!investigationId) return
+  aiGenerating.value = true
+  try {
+    await generateInvestigationAi(investigationId, { includePostmortem: false })
+    ElMessage.success(locale.value === 'zh' ? 'AI 结构化分析已完成' : 'AI structured analysis completed')
+    await loadInvestigationDetail(investigationId, true)
+    await loadInvestigationTimeline(investigationId, true)
+    await loadQualitySummary(true)
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? 'AI 分析失败' : 'AI analysis failed')
+  } finally {
+    aiGenerating.value = false
+  }
+}
+
+async function generatePostmortemDraft() {
+  const investigationId = selectedDetail.value?.investigation?.id
+  if (!investigationId) return
+  postmortemGenerating.value = true
+  try {
+    const { data } = await generateInvestigationPostmortem(investigationId, {})
+    if (data?.markdown) {
+      snapshotDraft.value = data.markdown
+    }
+    ElMessage.success(locale.value === 'zh' ? '复盘草稿已生成' : 'Postmortem draft generated')
+    await loadInvestigationDetail(investigationId, true)
+    await loadInvestigationTimeline(investigationId, true)
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? '生成复盘草稿失败' : 'Failed to generate postmortem')
+  } finally {
+    postmortemGenerating.value = false
   }
 }
 
@@ -715,6 +873,29 @@ async function executeAction(action) {
   }
 }
 
+async function retryAction(action) {
+  const investigationId = selectedDetail.value?.investigation?.id
+  if (!investigationId || !action?.id) return
+  actionOperatingId.value = action.id
+  actionOperatingType.value = 'retry'
+  try {
+    await retryInvestigationAction(investigationId, action.id, {
+      status: 'SUCCESS',
+      executionMode: 'MANUAL',
+      outputText: 'Retried via AI Expert Panel.'
+    })
+    ElMessage.success(locale.value === 'zh' ? '重试记录已写入' : 'Retry recorded')
+    await loadInvestigationDetail(investigationId, true)
+    await loadInvestigationTimeline(investigationId, true)
+    await loadQualitySummary(true)
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? '重试失败' : 'Retry failed')
+  } finally {
+    actionOperatingId.value = null
+    actionOperatingType.value = ''
+  }
+}
+
 async function saveSnapshot() {
   const investigationId = selectedDetail.value?.investigation?.id
   const markdown = snapshotDraft.value.trim()
@@ -739,8 +920,10 @@ async function saveSnapshot() {
 onMounted(async () => {
   connectReportsStream()
   await refreshInvestigations(false)
+  await loadQualitySummary(false)
   investigationRefreshTimer = setInterval(() => {
     refreshInvestigations(true)
+    loadQualitySummary(true)
   }, 15000)
 })
 
@@ -853,6 +1036,32 @@ onUnmounted(() => {
   gap: 10px;
 }
 
+.quality-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.quality-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 8px 10px;
+}
+
+.quality-label {
+  margin: 0;
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.quality-value {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text-1);
+  font-weight: 700;
+}
+
 .investigation-list {
   display: grid;
   grid-template-columns: 1fr;
@@ -927,6 +1136,12 @@ onUnmounted(() => {
   gap: 10px;
 }
 
+.detail-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .detail-title {
   margin: 0;
   font-size: 13px;
@@ -968,6 +1183,7 @@ onUnmounted(() => {
 
 .snapshot-editor-row {
   display: flex;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -1199,6 +1415,64 @@ onUnmounted(() => {
 .action-buttons {
   display: flex;
   gap: 8px;
+}
+
+.execution-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.execution-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 170px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.execution-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.execution-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.execution-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-1);
+}
+
+.execution-time {
+  margin: 0;
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.execution-output {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: pre-wrap;
+}
+
+.execution-error {
+  margin: 0;
+  font-size: 11px;
+  color: #fb7185;
+  white-space: pre-wrap;
 }
 
 .timeline-head {

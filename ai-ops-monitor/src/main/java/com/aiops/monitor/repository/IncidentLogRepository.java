@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -16,6 +17,10 @@ public interface IncidentLogRepository extends JpaRepository<IncidentLog, Long> 
     long countByCreatedAtAfter(LocalDateTime dateTime);
 
     long countByUserIdAndCreatedAtAfter(Long userId, LocalDateTime dateTime);
+
+    long countByUserIdAndCreatedAtAfterAndStatus(Long userId, LocalDateTime dateTime, String status);
+
+    List<IncidentLog> findByUserIdAndResolvedAtIsNotNullAndCreatedAtAfter(Long userId, LocalDateTime createdAfter);
 
     @Query("""
             SELECT i FROM IncidentLog i

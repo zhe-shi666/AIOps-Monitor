@@ -5,6 +5,8 @@ import com.aiops.monitor.model.entity.SystemMetricsHistory;
 import com.aiops.monitor.repository.IncidentLogRepository;
 import com.aiops.monitor.repository.SystemMetricsRepository;
 import com.aiops.monitor.service.AiService;
+import com.aiops.monitor.service.InvestigationOrchestrator;
+import com.aiops.monitor.service.LocalCollectorOwnershipService;
 import com.aiops.monitor.service.PromptDataBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +43,12 @@ public class AlarmCheckTask {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
+    @Autowired
+    private LocalCollectorOwnershipService localCollectorOwnershipService;
+
+    @Autowired
+    private InvestigationOrchestrator investigationOrchestrator;
+
     @Value("${monitor.mode:standalone}")
     private String monitorMode;
 
@@ -53,10 +61,27 @@ public class AlarmCheckTask {
     @Value("${monitor.threshold.memory:90}")
     private double memoryThreshold;
 
+    @Value("${monitor.threshold.disk:85}")
+    private double diskThreshold;
+
+    @Value("${monitor.threshold.process-count:400}")
+    private double processCountThreshold;
+
+    @Value("${monitor.threshold.net-rx:10485760}")
+    private double netRxThreshold;
+
+    @Value("${monitor.threshold.net-tx:10485760}")
+    private double netTxThreshold;
+
     @Scheduled(fixedRate = 5000) // 每 5 秒执行一次检测
     public void checkSystemHealth() {
         double cpuUsage = hardwareCollector.getCpuUsage();
         double memUsage = hardwareCollector.getMemoryUsage();
+        double diskUsage = hardwareCollector.getDiskUsage();
+        double[] netUsage = hardwareCollector.getNetworkBytesPerSec();
+        double netRxBytesPerSec = netUsage[0];
+        double netTxBytesPerSec = netUsage[1];
+        int processCount = hardwareCollector.getProcessCount();
 
         // 1. 检查 CPU
         if (cpuUsage > cpuThreshold) {
@@ -68,8 +93,29 @@ public class AlarmCheckTask {
             recordIncident("MEMORY", memUsage, memoryThreshold);
         }
 
-        log.info("【巡检中】CPU: {}%, 内存: {}%",
-                String.format("%.2f", cpuUsage), String.format("%.2f", memUsage));
+        if (diskUsage > diskThreshold) {
+            recordIncident("DISK", diskUsage, diskThreshold);
+        }
+
+        if (processCount > processCountThreshold) {
+            recordIncident("PROCESS_COUNT", processCount, processCountThreshold);
+        }
+
+        if (netRxBytesPerSec > netRxThreshold) {
+            recordIncident("NET_RX", netRxBytesPerSec, netRxThreshold);
+        }
+
+        if (netTxBytesPerSec > netTxThreshold) {
+            recordIncident("NET_TX", netTxBytesPerSec, netTxThreshold);
+        }
+
+        log.info("【巡检中】CPU: {}%, MEM: {}%, DISK: {}%, RX: {}B/s, TX: {}B/s, PROC: {}",
+                String.format("%.2f", cpuUsage),
+                String.format("%.2f", memUsage),
+                String.format("%.2f", diskUsage),
+                String.format("%.0f", netRxBytesPerSec),
+                String.format("%.0f", netTxBytesPerSec),
+                processCount);
     }
 
 
@@ -91,14 +137,29 @@ public class AlarmCheckTask {
         // 1. 存数据库（主线程执行，确保及时性）
         IncidentLog logEntry = new IncidentLog();
         // ... 设置属性
-        logEntry.setHostname(currentHost);
+        LocalCollectorOwnershipService.LocalOwnership ownership = localCollectorOwnershipService.resolve(currentHost);
+        String effectiveHostname = ownership == null ? currentHost : ownership.hostname();
+
+        logEntry.setHostname(effectiveHostname);
+        if (ownership != null) {
+            logEntry.setUserId(ownership.userId());
+            logEntry.setTargetId(ownership.targetId());
+        }
         logEntry.setMetricName(name);
         logEntry.setMetricValue(value);
         logEntry.setThreshold(threshold);
         logEntry.setCreatedAt(LocalDateTime.now());
-        logEntry.setMessage(String.format("%s 使用率过高: %.2f%%", name, value));
+        String unit = resolveUnit(name);
+        String display = "%".equals(unit) ? String.format("%.2f%%", value) : String.format("%.2f%s", value, unit);
+        String thresholdDisplay = "%".equals(unit) ? String.format("%.2f%%", threshold) : String.format("%.2f%s", threshold, unit);
+        logEntry.setMessage(String.format("%s 指标超过阈值: %s > %s", name, display, thresholdDisplay));
         logEntry.setStatus("OPEN");
-        logRepository.save(logEntry);
+        IncidentLog saved = logRepository.save(logEntry);
+        try {
+            investigationOrchestrator.openFromIncident(saved);
+        } catch (Exception ex) {
+            log.warn("本地告警创建调查失败: incidentId={}, reason={}", saved.getId(), ex.getMessage());
+        }
 
 
         // 2. 根据模式决定扔给异步线程池处理 AI 逻辑
@@ -108,14 +169,14 @@ public class AlarmCheckTask {
         String alertInfo;
         if (isDistributed) {
             // 分布式模式：上帝视角，查全表
-            alertInfo= String.format("%s中%s 使用率为 %.2f%%",currentHost, name, value);
+            alertInfo= String.format("%s中%s 使用率为 %.2f%%",effectiveHostname, name, value);
             history = metricsRepository.findTop20ByOrderByTimestampDesc();
             analysisScope = "全集群整体";
         } else {
             // 本地模式：保镖视角，只看自己
             alertInfo = String.format("%s 使用率为 %.2f%%", name, value);
-            history = metricsRepository.findTop20ByHostnameOrderByTimestampDesc(currentHost);
-            analysisScope = "本节点 (" + currentHost + ")";
+            history = metricsRepository.findTop20ByHostnameOrderByTimestampDesc(effectiveHostname);
+            analysisScope = "本节点 (" + effectiveHostname + ")";
         }
 
         if (history.isEmpty()) return;
@@ -129,5 +190,17 @@ public class AlarmCheckTask {
                     // 将报告推送到 /topic/ai-reports 频道
                     messagingTemplate.convertAndSend("/topic/ai-reports", report);
                 });
+    }
+
+    private String resolveUnit(String metricName) {
+        if ("CPU".equalsIgnoreCase(metricName)
+                || "MEMORY".equalsIgnoreCase(metricName)
+                || "DISK".equalsIgnoreCase(metricName)) {
+            return "%";
+        }
+        if ("PROCESS_COUNT".equalsIgnoreCase(metricName)) {
+            return "";
+        }
+        return "B/s";
     }
 }

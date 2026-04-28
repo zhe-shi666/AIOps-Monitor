@@ -6,6 +6,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -14,6 +16,12 @@ public interface AiInvestigationRepository extends JpaRepository<AiInvestigation
     Page<AiInvestigation> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 
     Page<AiInvestigation> findByUserIdAndStatusOrderByCreatedAtDesc(Long userId, String status, Pageable pageable);
+
+    long countByUserIdAndStatus(Long userId, String status);
+
+    long countByUserIdAndStatusNot(Long userId, String status);
+
+    List<AiInvestigation> findByUserIdAndClosedAtIsNotNullAndClosedAtAfter(Long userId, LocalDateTime closedAfter);
 
     Optional<AiInvestigation> findByIdAndUserId(Long id, Long userId);
 }
