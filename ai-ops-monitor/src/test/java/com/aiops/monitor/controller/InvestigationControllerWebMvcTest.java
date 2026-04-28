@@ -2,6 +2,7 @@ package com.aiops.monitor.controller;
 
 import com.aiops.monitor.model.entity.AiActionPlan;
 import com.aiops.monitor.model.entity.AiActionRun;
+import com.aiops.monitor.model.entity.AiActionAudit;
 import com.aiops.monitor.model.entity.AiHypothesis;
 import com.aiops.monitor.model.entity.AiInvestigation;
 import com.aiops.monitor.model.entity.AiModelTrace;
@@ -11,10 +12,12 @@ import com.aiops.monitor.model.entity.RcaReport;
 import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.repository.AiActionPlanRepository;
 import com.aiops.monitor.repository.AiActionRunRepository;
+import com.aiops.monitor.repository.AiActionAuditRepository;
 import com.aiops.monitor.repository.AiHypothesisRepository;
 import com.aiops.monitor.repository.AiInvestigationRepository;
 import com.aiops.monitor.repository.AiModelTraceRepository;
 import com.aiops.monitor.repository.AiObservationRepository;
+import com.aiops.monitor.repository.AiRollbackRunRepository;
 import com.aiops.monitor.repository.AiReportSnapshotRepository;
 import com.aiops.monitor.repository.RcaReportRepository;
 import com.aiops.monitor.service.CurrentUserService;
@@ -43,6 +46,7 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -72,6 +76,10 @@ class InvestigationControllerWebMvcTest {
     private AiActionPlanRepository aiActionPlanRepository;
     @MockBean
     private AiActionRunRepository aiActionRunRepository;
+    @MockBean
+    private AiActionAuditRepository aiActionAuditRepository;
+    @MockBean
+    private AiRollbackRunRepository aiRollbackRunRepository;
     @MockBean
     private AiReportSnapshotRepository aiReportSnapshotRepository;
     @MockBean
@@ -188,6 +196,40 @@ class InvestigationControllerWebMvcTest {
                 .andExpect(jsonPath("$.content[0].id").value(601))
                 .andExpect(jsonPath("$.content[0].phase").value("STRUCTURED_ANALYSIS"))
                 .andExpect(jsonPath("$.content[0].status").value("SUCCESS"));
+    }
+
+    @Test
+    void shouldReturnActionAuditsPageForInvestigation() throws Exception {
+        User user = buildUser(5L, "audit");
+        AiInvestigation investigation = new AiInvestigation();
+        investigation.setId(902L);
+
+        AiActionAudit audit = new AiActionAudit();
+        audit.setId(701L);
+        audit.setInvestigationId(902L);
+        audit.setActionPlanId(301L);
+        audit.setUserId(5L);
+        audit.setEventType("ACTION_APPROVED");
+        audit.setDecision("APPROVED");
+
+        Page<AiActionAudit> page = new PageImpl<>(
+                List.of(audit),
+                PageRequest.of(0, 10),
+                1
+        );
+
+        when(currentUserService.requireUser(any())).thenReturn(user);
+        when(aiInvestigationRepository.findByIdAndUserId(902L, 5L)).thenReturn(Optional.of(investigation));
+        when(aiActionAuditRepository.search(eq(902L), eq(5L), isNull(), isNull(), any(Pageable.class)))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/api/investigations/902/actions/audits")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(701))
+                .andExpect(jsonPath("$.content[0].eventType").value("ACTION_APPROVED"))
+                .andExpect(jsonPath("$.content[0].decision").value("APPROVED"));
     }
 
     private User buildUser(Long id, String username) {

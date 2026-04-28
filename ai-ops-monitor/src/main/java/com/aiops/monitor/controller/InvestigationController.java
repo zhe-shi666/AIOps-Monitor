@@ -1,6 +1,7 @@
 package com.aiops.monitor.controller;
 
 import com.aiops.monitor.model.dto.AiActionExecuteRequest;
+import com.aiops.monitor.model.dto.AiActionRollbackRequest;
 import com.aiops.monitor.model.dto.AiActionApproveRequest;
 import com.aiops.monitor.model.dto.AiActionPlanCreateRequest;
 import com.aiops.monitor.model.dto.AiActionRetryRequest;
@@ -12,8 +13,10 @@ import com.aiops.monitor.model.dto.AiPostmortemGenerateRequest;
 import com.aiops.monitor.model.dto.AiReportSnapshotCreateRequest;
 import com.aiops.monitor.model.entity.AiActionPlan;
 import com.aiops.monitor.model.entity.AiActionRun;
+import com.aiops.monitor.model.entity.AiActionAudit;
 import com.aiops.monitor.model.entity.AiHypothesis;
 import com.aiops.monitor.model.entity.AiInvestigation;
+import com.aiops.monitor.model.entity.AiRollbackRun;
 import com.aiops.monitor.model.entity.AiObservation;
 import com.aiops.monitor.model.entity.AiReportSnapshot;
 import com.aiops.monitor.model.entity.AiModelTrace;
@@ -21,8 +24,10 @@ import com.aiops.monitor.model.entity.RcaReport;
 import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.repository.AiActionPlanRepository;
 import com.aiops.monitor.repository.AiActionRunRepository;
+import com.aiops.monitor.repository.AiActionAuditRepository;
 import com.aiops.monitor.repository.AiHypothesisRepository;
 import com.aiops.monitor.repository.AiInvestigationRepository;
+import com.aiops.monitor.repository.AiRollbackRunRepository;
 import com.aiops.monitor.repository.AiObservationRepository;
 import com.aiops.monitor.repository.AiReportSnapshotRepository;
 import com.aiops.monitor.repository.AiModelTraceRepository;
@@ -31,6 +36,8 @@ import com.aiops.monitor.service.CurrentUserService;
 import com.aiops.monitor.service.InvestigationEventPublisher;
 import com.aiops.monitor.service.InvestigationIntelligenceService;
 import com.aiops.monitor.service.InvestigationQualityService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -60,6 +67,8 @@ public class InvestigationController {
     private final AiHypothesisRepository aiHypothesisRepository;
     private final AiActionPlanRepository aiActionPlanRepository;
     private final AiActionRunRepository aiActionRunRepository;
+    private final AiActionAuditRepository aiActionAuditRepository;
+    private final AiRollbackRunRepository aiRollbackRunRepository;
     private final AiReportSnapshotRepository aiReportSnapshotRepository;
     private final RcaReportRepository rcaReportRepository;
     private final AiModelTraceRepository aiModelTraceRepository;
@@ -67,6 +76,7 @@ public class InvestigationController {
     private final InvestigationQualityService investigationQualityService;
     private final InvestigationIntelligenceService investigationIntelligenceService;
     private final InvestigationEventPublisher investigationEventPublisher;
+    private final ObjectMapper objectMapper;
 
     @GetMapping
     public ResponseEntity<Page<AiInvestigation>> list(@RequestParam(defaultValue = "0") int page,
@@ -137,9 +147,11 @@ public class InvestigationController {
         result.put("hypotheses", aiHypothesisRepository.findByInvestigationIdAndUserIdOrderByRankOrderAsc(id, user.getId()));
         result.put("actionPlans", aiActionPlanRepository.findByInvestigationIdAndUserIdOrderByCreatedAtAsc(id, user.getId()));
         result.put("actionRuns", aiActionRunRepository.findByInvestigationIdAndUserIdOrderByCreatedAtAsc(id, user.getId()));
+        result.put("rollbackRuns", aiRollbackRunRepository.findByInvestigationIdAndUserIdOrderByCreatedAtDesc(id, user.getId()));
         result.put("latestSnapshot", aiReportSnapshotRepository.findFirstByInvestigationIdAndUserIdOrderByVersionNoDesc(id, user.getId()).orElse(null));
         result.put("snapshots", aiReportSnapshotRepository.findByInvestigationIdAndUserIdOrderByVersionNoDesc(id, user.getId()));
         result.put("latestRcaReport", rcaReportRepository.findFirstByInvestigationIdAndUserIdOrderByCreatedAtDesc(id, user.getId()).orElse(null));
+        result.put("recentActionAudits", aiActionAuditRepository.search(id, user.getId(), null, null, PageRequest.of(0, 20)).getContent());
         return ResponseEntity.ok(result);
     }
 
@@ -169,6 +181,44 @@ public class InvestigationController {
         PageRequest pageable = PageRequest.of(Math.max(0, page), safeSize, Sort.by("createdAt").descending());
         Page<AiModelTrace> traces = aiModelTraceRepository.findByInvestigationIdAndUserIdOrderByCreatedAtDesc(id, user.getId(), pageable);
         return ResponseEntity.ok(traces);
+    }
+
+    @GetMapping("/{id}/actions/audits")
+    public ResponseEntity<Page<AiActionAudit>> actionAudits(@PathVariable Long id,
+                                                            @RequestParam(defaultValue = "0") int page,
+                                                            @RequestParam(defaultValue = "20") int size,
+                                                            @RequestParam(required = false) Long actionId,
+                                                            @RequestParam(required = false) String eventType,
+                                                            Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        requireInvestigation(id, user.getId());
+        int safeSize = Math.max(1, Math.min(100, size));
+        PageRequest pageable = PageRequest.of(Math.max(0, page), safeSize, Sort.by("createdAt").descending());
+        Page<AiActionAudit> audits = aiActionAuditRepository.search(
+                id,
+                user.getId(),
+                actionId,
+                normalizeUpper(eventType),
+                pageable
+        );
+        return ResponseEntity.ok(audits);
+    }
+
+    @GetMapping("/{id}/actions/{actionId}/rollback-runs")
+    public ResponseEntity<List<AiRollbackRun>> rollbackRuns(@PathVariable Long id,
+                                                            @PathVariable Long actionId,
+                                                            Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        requireInvestigation(id, user.getId());
+        aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
+        return ResponseEntity.ok(
+                aiRollbackRunRepository.findByActionPlanIdAndInvestigationIdAndUserIdOrderByCreatedAtDesc(
+                        actionId,
+                        id,
+                        user.getId()
+                )
+        );
     }
 
     @GetMapping("/{id}/timeline")
@@ -256,7 +306,35 @@ public class InvestigationController {
                         run.getId(),
                         Map.of(
                                 "executionMode", safe(run.getExecutionMode(), "MANUAL"),
-                                "endedAt", run.getEndedAt()
+                                "endedAt", run.getEndedAt() == null ? "-" : run.getEndedAt().toString()
+                        )
+                )));
+
+        aiRollbackRunRepository.findByInvestigationIdAndUserIdOrderByCreatedAtDesc(id, user.getId())
+                .forEach(run -> events.add(new TimelineEvent(
+                        nonNullTime(run.getStartedAt(), run.getCreatedAt()),
+                        "ROLLBACK_RUN",
+                        (run.isDrillMode() ? "Rollback Drill: " : "Rollback Execute: ") + safe(run.getStatus(), "PENDING"),
+                        safe(run.getExecutor(), "unknown-executor"),
+                        run.getId(),
+                        Map.of(
+                                "executionMode", safe(run.getExecutionMode(), "MANUAL"),
+                                "drillMode", run.isDrillMode(),
+                                "endedAt", run.getEndedAt() == null ? "-" : run.getEndedAt().toString()
+                        )
+                )));
+
+        aiActionAuditRepository.search(id, user.getId(), null, null, PageRequest.of(0, 100))
+                .getContent()
+                .forEach(audit -> events.add(new TimelineEvent(
+                        audit.getCreatedAt(),
+                        "ACTION_AUDIT",
+                        "Audit: " + safe(audit.getEventType(), "ACTION_EVENT"),
+                        safe(audit.getActor(), "system"),
+                        audit.getId(),
+                        Map.of(
+                                "decision", safe(audit.getDecision(), "-"),
+                                "riskLevel", safe(audit.getRiskLevel(), "-")
                         )
                 )));
 
@@ -444,14 +522,27 @@ public class InvestigationController {
         actionPlan.setTitle(normalize(request.getTitle()));
         actionPlan.setCommandText(normalize(request.getCommandText()));
         actionPlan.setRunbookRef(normalize(request.getRunbookRef()));
-        actionPlan.setRiskLevel(resolveRiskLevel(request.getRiskLevel()));
-        boolean requiresApproval = request.getRequiresApproval() == null || request.getRequiresApproval();
+        String riskLevel = resolveRiskLevel(request.getRiskLevel());
+        actionPlan.setRiskLevel(riskLevel);
+        boolean requiresApproval = resolveRequiresApproval(riskLevel, request.getRequiresApproval());
+        String rollbackPlan = normalize(request.getRollbackPlan());
+        if ("HIGH".equals(riskLevel) && rollbackPlan == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "HIGH 风险动作必须提供 rollbackPlan");
+        }
         actionPlan.setRequiresApproval(requiresApproval);
         actionPlan.setStatus(requiresApproval ? "PROPOSED" : "APPROVED");
-        actionPlan.setRollbackPlan(normalize(request.getRollbackPlan()));
+        actionPlan.setRollbackPlan(rollbackPlan);
         actionPlan.setCreatedAt(LocalDateTime.now());
         actionPlan.setUpdatedAt(LocalDateTime.now());
         AiActionPlan saved = aiActionPlanRepository.save(actionPlan);
+
+        if (!requiresApproval) {
+            saved.setApprovedBy(user.getUsername());
+            saved.setApprovedAt(LocalDateTime.now());
+            saved.setApprovalNote("AUTO_APPROVED_BY_POLICY");
+            saved.setUpdatedAt(LocalDateTime.now());
+            saved = aiActionPlanRepository.save(saved);
+        }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", saved.getId());
@@ -467,6 +558,20 @@ public class InvestigationController {
                         "actionId", saved.getId(),
                         "status", saved.getStatus(),
                         "riskLevel", safe(saved.getRiskLevel(), "MEDIUM")
+                )
+        );
+        recordActionAudit(
+                id,
+                saved.getId(),
+                user,
+                "ACTION_PLAN_CREATED",
+                "ACCEPTED",
+                saved.getRiskLevel(),
+                Map.of(
+                        "status", saved.getStatus(),
+                        "requiresApproval", saved.isRequiresApproval(),
+                        "actionType", safe(saved.getActionType(), "RUNBOOK"),
+                        "title", safe(saved.getTitle(), "-")
                 )
         );
         return ResponseEntity.ok(result);
@@ -490,10 +595,15 @@ public class InvestigationController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "动作已审批，无法重复审批");
         }
 
+        String approvalNote = normalize(request == null ? null : request.getNote());
+        if ("HIGH".equalsIgnoreCase(actionPlan.getRiskLevel()) && approvalNote == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "HIGH 风险动作审批必须填写 note");
+        }
+
         actionPlan.setStatus("APPROVED");
         actionPlan.setApprovedBy(user.getUsername());
         actionPlan.setApprovedAt(LocalDateTime.now());
-        actionPlan.setApprovalNote(normalize(request == null ? null : request.getNote()));
+        actionPlan.setApprovalNote(approvalNote);
         actionPlan.setUpdatedAt(LocalDateTime.now());
         aiActionPlanRepository.save(actionPlan);
 
@@ -513,6 +623,18 @@ public class InvestigationController {
                         "approvedBy", safe(actionPlan.getApprovedBy(), "unknown")
                 )
         );
+        recordActionAudit(
+                id,
+                actionPlan.getId(),
+                user,
+                "ACTION_APPROVED",
+                "APPROVED",
+                actionPlan.getRiskLevel(),
+                Map.of(
+                        "approvedBy", safe(actionPlan.getApprovedBy(), "unknown"),
+                        "approvalNote", safe(actionPlan.getApprovalNote(), "-")
+                )
+        );
         return ResponseEntity.ok(result);
     }
 
@@ -529,11 +651,17 @@ public class InvestigationController {
         if ("EXECUTED".equalsIgnoreCase(actionPlan.getStatus())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "动作已执行，不能重复执行");
         }
+        if ("ROLLED_BACK".equalsIgnoreCase(actionPlan.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "动作已回滚，不能再次执行");
+        }
 
         if (actionPlan.isRequiresApproval()
                 && !"APPROVED".equalsIgnoreCase(actionPlan.getStatus())
                 && !"FAILED".equalsIgnoreCase(actionPlan.getStatus())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "动作未审批，不能执行");
+        }
+        if ("HIGH".equalsIgnoreCase(actionPlan.getRiskLevel()) && normalize(actionPlan.getRollbackPlan()) == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "HIGH 风险动作缺少 rollbackPlan，不能执行");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -571,6 +699,19 @@ public class InvestigationController {
                         "actionId", actionPlan.getId(),
                         "runId", savedRun.getId(),
                         "runStatus", safe(savedRun.getStatus(), "UNKNOWN")
+                )
+        );
+        recordActionAudit(
+                id,
+                actionPlan.getId(),
+                user,
+                "ACTION_EXECUTED",
+                safe(savedRun.getStatus(), "UNKNOWN"),
+                actionPlan.getRiskLevel(),
+                Map.of(
+                        "runId", savedRun.getId(),
+                        "executionMode", safe(savedRun.getExecutionMode(), "MANUAL"),
+                        "actionStatus", safe(actionPlan.getStatus(), "-")
                 )
         );
         return ResponseEntity.ok(result);
@@ -624,6 +765,19 @@ public class InvestigationController {
                         "retryCount", actionPlan.getRetryCount() == null ? 0 : actionPlan.getRetryCount()
                 )
         );
+        recordActionAudit(
+                id,
+                actionPlan.getId(),
+                user,
+                "ACTION_RETRY",
+                safe(savedRun.getStatus(), "UNKNOWN"),
+                actionPlan.getRiskLevel(),
+                Map.of(
+                        "runId", savedRun.getId(),
+                        "retryCount", actionPlan.getRetryCount() == null ? 0 : actionPlan.getRetryCount(),
+                        "executionMode", safe(savedRun.getExecutionMode(), "MANUAL")
+                )
+        );
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("actionId", actionPlan.getId());
@@ -632,6 +786,30 @@ public class InvestigationController {
         result.put("runId", savedRun.getId());
         result.put("runStatus", savedRun.getStatus());
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/{id}/actions/{actionId}/rollback-drill")
+    public ResponseEntity<Map<String, Object>> rollbackDrill(@PathVariable Long id,
+                                                             @PathVariable Long actionId,
+                                                             @RequestBody(required = false) AiActionRollbackRequest request,
+                                                             Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        requireInvestigation(id, user.getId());
+        AiActionPlan actionPlan = aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
+        return ResponseEntity.ok(runRollback(actionPlan, id, user, request, true));
+    }
+
+    @PostMapping("/{id}/actions/{actionId}/rollback-execute")
+    public ResponseEntity<Map<String, Object>> rollbackExecute(@PathVariable Long id,
+                                                               @PathVariable Long actionId,
+                                                               @RequestBody(required = false) AiActionRollbackRequest request,
+                                                               Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        requireInvestigation(id, user.getId());
+        AiActionPlan actionPlan = aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
+        return ResponseEntity.ok(runRollback(actionPlan, id, user, request, false));
     }
 
     @PostMapping("/{id}/snapshots")
@@ -681,6 +859,108 @@ public class InvestigationController {
                 )
         );
         return ResponseEntity.ok(result);
+    }
+
+    private Map<String, Object> runRollback(AiActionPlan actionPlan,
+                                            Long investigationId,
+                                            User user,
+                                            AiActionRollbackRequest request,
+                                            boolean drillMode) {
+        String rollbackPlan = normalize(actionPlan.getRollbackPlan());
+        if (rollbackPlan == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该动作缺少 rollbackPlan，无法回滚");
+        }
+        if (!"EXECUTED".equalsIgnoreCase(actionPlan.getStatus()) && !drillMode) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "仅 EXECUTED 状态动作支持正式回滚");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        String runStatus = resolveExecutionStatus(request == null ? null : request.getStatus());
+        AiRollbackRun rollbackRun = new AiRollbackRun();
+        rollbackRun.setActionPlanId(actionPlan.getId());
+        rollbackRun.setInvestigationId(investigationId);
+        rollbackRun.setUserId(user.getId());
+        rollbackRun.setExecutor(user.getUsername());
+        rollbackRun.setDrillMode(drillMode);
+        rollbackRun.setExecutionMode(resolveExecutionMode(request == null ? null : request.getExecutionMode()));
+        rollbackRun.setStatus(runStatus);
+        rollbackRun.setNoteText(normalize(request == null ? null : request.getNote()));
+        rollbackRun.setOutputText(normalize(request == null ? null : request.getOutputText()));
+        rollbackRun.setErrorMessage(normalize(request == null ? null : request.getErrorMessage()));
+        rollbackRun.setStartedAt(now);
+        rollbackRun.setEndedAt(now);
+        rollbackRun.setCreatedAt(now);
+        AiRollbackRun savedRun = aiRollbackRunRepository.save(rollbackRun);
+
+        if (!drillMode && "SUCCESS".equalsIgnoreCase(runStatus)) {
+            actionPlan.setStatus("ROLLED_BACK");
+            actionPlan.setUpdatedAt(LocalDateTime.now());
+            aiActionPlanRepository.save(actionPlan);
+        }
+
+        String eventType = drillMode ? "ROLLBACK_DRILL" : "ROLLBACK_EXECUTED";
+        investigationEventPublisher.publish(
+                user.getId(),
+                eventType,
+                investigationId,
+                drillMode ? "Rollback drill finished" : "Rollback execution finished",
+                Map.of(
+                        "actionId", actionPlan.getId(),
+                        "rollbackRunId", savedRun.getId(),
+                        "status", safe(savedRun.getStatus(), "UNKNOWN")
+                )
+        );
+
+        recordActionAudit(
+                investigationId,
+                actionPlan.getId(),
+                user,
+                eventType,
+                safe(savedRun.getStatus(), "UNKNOWN"),
+                actionPlan.getRiskLevel(),
+                Map.of(
+                        "rollbackRunId", savedRun.getId(),
+                        "drillMode", savedRun.isDrillMode(),
+                        "executionMode", safe(savedRun.getExecutionMode(), "MANUAL"),
+                        "note", safe(savedRun.getNoteText(), "-")
+                )
+        );
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("actionId", actionPlan.getId());
+        result.put("actionStatus", actionPlan.getStatus());
+        result.put("rollbackRunId", savedRun.getId());
+        result.put("rollbackStatus", savedRun.getStatus());
+        result.put("drillMode", savedRun.isDrillMode());
+        return result;
+    }
+
+    private void recordActionAudit(Long investigationId,
+                                   Long actionId,
+                                   User actor,
+                                   String eventType,
+                                   String decision,
+                                   String riskLevel,
+                                   Map<String, Object> details) {
+        AiActionAudit audit = new AiActionAudit();
+        audit.setInvestigationId(investigationId);
+        audit.setActionPlanId(actionId);
+        audit.setUserId(actor.getId());
+        audit.setEventType(eventType);
+        audit.setActor(actor.getUsername());
+        audit.setDecision(decision);
+        audit.setRiskLevel(riskLevel);
+        audit.setDetailJson(toJson(details));
+        audit.setCreatedAt(LocalDateTime.now());
+        aiActionAuditRepository.save(audit);
+    }
+
+    private String toJson(Map<String, Object> data) {
+        try {
+            return objectMapper.writeValueAsString(data == null ? Map.of() : data);
+        } catch (JsonProcessingException ex) {
+            return "{\"error\":\"detail_json_serialize_failed\"}";
+        }
     }
 
     private String normalize(String value) {
@@ -744,13 +1024,24 @@ public class InvestigationController {
         return normalized;
     }
 
+    private boolean resolveRequiresApproval(String riskLevel, Boolean requested) {
+        String normalizedRisk = resolveRiskLevel(riskLevel);
+        if ("HIGH".equals(normalizedRisk) || "MEDIUM".equals(normalizedRisk)) {
+            return true;
+        }
+        if (requested == null) {
+            return false;
+        }
+        return requested;
+    }
+
     private String resolveExecutionStatus(String statusInput) {
         String normalized = normalizeUpper(statusInput);
         if (normalized == null) {
             return "SUCCESS";
         }
-        if (!"SUCCESS".equals(normalized) && !"FAILED".equals(normalized)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status 仅支持 SUCCESS/FAILED");
+        if (!"SUCCESS".equals(normalized) && !"FAILED".equals(normalized) && !"PENDING".equals(normalized)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status 仅支持 SUCCESS/FAILED/PENDING");
         }
         return normalized;
     }

@@ -338,6 +338,12 @@
                 :rows="2"
                 resize="none"
                 :placeholder="locale === 'zh' ? '执行命令或 runbook 描述' : 'Command or runbook notes'" />
+              <el-input
+                v-model="actionDraft.rollbackPlan"
+                type="textarea"
+                :rows="2"
+                resize="none"
+                :placeholder="locale === 'zh' ? '回滚方案（HIGH 风险必填）' : 'Rollback plan (required for HIGH risk)'" />
               <div class="action-create-row">
                 <el-select v-model="actionDraft.riskLevel" size="small" class="action-select">
                   <el-option label="LOW" value="LOW" />
@@ -346,6 +352,7 @@
                 </el-select>
                 <el-switch
                   v-model="actionDraft.requiresApproval"
+                  :disabled="actionDraft.riskLevel !== 'LOW'"
                   :active-text="locale === 'zh' ? '需审批' : 'Approval'"
                   :inactive-text="locale === 'zh' ? '免审批' : 'No approval'" />
                 <el-button size="small" type="primary" :loading="actionSubmitting" @click="createActionPlan">
@@ -365,6 +372,9 @@
                   </div>
                 </div>
                 <p v-if="action.commandText" class="action-command">{{ action.commandText }}</p>
+                <p v-if="action.rollbackPlan" class="action-command rollback-plan">
+                  {{ locale === 'zh' ? '回滚：' : 'Rollback: ' }}{{ action.rollbackPlan }}
+                </p>
                 <div class="action-buttons">
                   <el-button
                     size="small"
@@ -391,6 +401,24 @@
                     :loading="actionOperatingId === action.id && actionOperatingType === 'retry'"
                     @click="retryAction(action)">
                     {{ locale === 'zh' ? '重试' : 'Retry' }}
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="info"
+                    plain
+                    :disabled="!action.rollbackPlan"
+                    :loading="actionOperatingId === action.id && actionOperatingType === 'rollbackDrill'"
+                    @click="rollbackDrill(action)">
+                    {{ locale === 'zh' ? '回滚演练' : 'Rollback Drill' }}
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="danger"
+                    plain
+                    :disabled="action.status !== 'EXECUTED' || !action.rollbackPlan"
+                    :loading="actionOperatingId === action.id && actionOperatingType === 'rollbackExecute'"
+                    @click="rollbackExecute(action)">
+                    {{ locale === 'zh' ? '执行回滚' : 'Rollback' }}
                   </el-button>
                 </div>
               </div>
@@ -427,6 +455,53 @@
             </div>
           </div>
 
+          <div v-else-if="detailTab === 'governance'" class="process-body">
+            <div class="section-title-row">
+              <p class="section-title">{{ locale === 'zh' ? '治理审计' : 'Governance Audit' }}</p>
+              <span class="section-count">{{ actionAudits.length }}</span>
+            </div>
+
+            <div class="execution-list">
+              <div v-for="audit in actionAudits" :key="audit.id" class="execution-item">
+                <div class="execution-item-head">
+                  <p class="execution-title">#{{ audit.id }} · {{ audit.eventType || '-' }}</p>
+                  <div class="action-tags">
+                    <span class="inv-chip">{{ audit.riskLevel || '-' }}</span>
+                    <span class="inv-chip">{{ audit.decision || '-' }}</span>
+                  </div>
+                </div>
+                <p class="execution-time">{{ formatDateTime(audit.createdAt) }} · {{ audit.actor || '-' }}</p>
+                <p v-if="audit.detailJson" class="execution-output">{{ audit.detailJson }}</p>
+              </div>
+              <div v-if="!actionAudits.length" class="ai-empty inline">
+                <p>{{ locale === 'zh' ? '暂无治理审计记录' : 'No governance audit records' }}</p>
+              </div>
+            </div>
+
+            <div class="section-title-row top-gap">
+              <p class="section-title">{{ locale === 'zh' ? '回滚记录' : 'Rollback Runs' }}</p>
+              <span class="section-count">{{ rollbackRuns.length }}</span>
+            </div>
+            <div class="execution-list">
+              <div v-for="run in rollbackRuns" :key="run.id" class="execution-item">
+                <div class="execution-item-head">
+                  <p class="execution-title">#{{ run.id }} · {{ run.drillMode ? (locale === 'zh' ? '演练' : 'Drill') : (locale === 'zh' ? '执行' : 'Execute') }} · {{ run.status || '-' }}</p>
+                  <div class="action-tags">
+                    <span class="inv-chip">{{ run.executionMode || 'MANUAL' }}</span>
+                    <span class="inv-chip">{{ run.executor || '-' }}</span>
+                  </div>
+                </div>
+                <p class="execution-time">{{ formatDateTime(run.startedAt || run.createdAt) }} → {{ formatDateTime(run.endedAt || run.createdAt) }}</p>
+                <p v-if="run.noteText" class="execution-output">{{ run.noteText }}</p>
+                <p v-if="run.outputText" class="execution-output">{{ run.outputText }}</p>
+                <p v-if="run.errorMessage" class="execution-error">{{ run.errorMessage }}</p>
+              </div>
+              <div v-if="!rollbackRuns.length" class="ai-empty inline">
+                <p>{{ locale === 'zh' ? '暂无回滚记录' : 'No rollback runs' }}</p>
+              </div>
+            </div>
+          </div>
+
           <div v-else-if="detailTab === 'timeline'" class="process-body">
             <div class="timeline-head">
               <span>{{ locale === 'zh' ? '调查时间线' : 'Timeline' }}</span>
@@ -438,6 +513,8 @@
                   <el-option value="HYPOTHESIS" label="HYPOTHESIS" />
                   <el-option value="ACTION_PLAN" label="ACTION_PLAN" />
                   <el-option value="ACTION_RUN" label="ACTION_RUN" />
+                  <el-option value="ACTION_AUDIT" label="ACTION_AUDIT" />
+                  <el-option value="ROLLBACK_RUN" label="ROLLBACK_RUN" />
                   <el-option value="REPORT_SNAPSHOT" label="REPORT_SNAPSHOT" />
                 </el-select>
                 <span>{{ filteredTimelineEvents.length }}</span>
@@ -509,10 +586,13 @@ import {
   executeInvestigationAction,
   generateInvestigationAi,
   generateInvestigationPostmortem,
+  getInvestigationActionAudits,
   getInvestigationDetail,
   getInvestigations,
   getInvestigationQualitySummary,
   getInvestigationTimeline,
+  rollbackDrillAction,
+  rollbackExecuteAction,
   retryInvestigationAction
 } from '../api/investigations'
 
@@ -542,6 +622,7 @@ const snapshotSaving = ref(false)
 const snapshotDraft = ref('')
 const timelineCategory = ref('ALL')
 const qualitySummary = ref(null)
+const actionAudits = ref([])
 
 let stompClient = null
 let reconnectTimer = null
@@ -568,7 +649,8 @@ const actionDraft = reactive({
   title: '',
   commandText: '',
   riskLevel: 'MEDIUM',
-  requiresApproval: true
+  requiresApproval: true,
+  rollbackPlan: ''
 })
 
 const selectedSnapshotHtml = computed(() => {
@@ -582,6 +664,7 @@ const currentDetailTabHint = computed(() => {
     hypothesis: '假设：基于证据归纳根因候选，并逐步确认或排除。',
     action: '动作：形成可执行的处置计划，审批后执行并记录结果。',
     execution: '执行：查看执行结果、输出与错误，判断动作是否生效。',
+    governance: '治理：审计审批与执行决策，并完成回滚演练/回滚执行留痕。',
     timeline: '时间线：回看调查全过程，用于复盘与审计。'
   }
   const enMap = {
@@ -590,6 +673,7 @@ const currentDetailTabHint = computed(() => {
     hypothesis: 'Hypothesis: derive and validate root-cause candidates from evidence.',
     action: 'Actions: create executable plans, approve, execute, and track outcomes.',
     execution: 'Execution: inspect outputs and errors to verify action effectiveness.',
+    governance: 'Governance: audit decisions and complete rollback drills/executions.',
     timeline: 'Timeline: review the full investigation path for postmortem and audit.'
   }
   const map = locale.value === 'zh' ? zhMap : enMap
@@ -600,6 +684,7 @@ const observations = computed(() => selectedDetail.value?.observations || [])
 const hypotheses = computed(() => selectedDetail.value?.hypotheses || [])
 const actionPlans = computed(() => selectedDetail.value?.actionPlans || [])
 const actionRuns = computed(() => selectedDetail.value?.actionRuns || [])
+const rollbackRuns = computed(() => selectedDetail.value?.rollbackRuns || [])
 const detailTabs = computed(() => {
   const zh = locale.value === 'zh'
   return [
@@ -608,6 +693,7 @@ const detailTabs = computed(() => {
     { key: 'hypothesis', label: zh ? '假设' : 'Hypothesis', count: hypotheses.value.length },
     { key: 'action', label: zh ? '动作' : 'Actions', count: actionPlans.value.length },
     { key: 'execution', label: zh ? '执行' : 'Execution', count: actionRuns.value.length },
+    { key: 'governance', label: zh ? '治理' : 'Governance', count: actionAudits.value.length },
     { key: 'timeline', label: zh ? '时间线' : 'Timeline', count: timelineEvents.value.length }
   ]
 })
@@ -699,6 +785,7 @@ function connectReportsStream() {
       if (currentId && incomingId && currentId === incomingId) {
         await loadInvestigationDetail(currentId, true)
         await loadInvestigationTimeline(currentId, true)
+        await loadActionAudits(currentId, true)
       }
       await loadQualitySummary(true)
     })
@@ -720,6 +807,7 @@ async function refreshInvestigations(silent = true) {
       selectedInvestigationId.value = null
       selectedDetail.value = null
       timelineEvents.value = []
+      actionAudits.value = []
       return
     }
 
@@ -732,6 +820,7 @@ async function refreshInvestigations(silent = true) {
     if (selectedInvestigationId.value) {
       await loadInvestigationDetail(selectedInvestigationId.value, true)
       await loadInvestigationTimeline(selectedInvestigationId.value, true)
+      await loadActionAudits(selectedInvestigationId.value, true)
     }
   } catch (_e) {
     if (!silent) {
@@ -747,6 +836,7 @@ async function selectInvestigation(id) {
   detailTab.value = 'overview'
   await loadInvestigationDetail(id, false)
   await loadInvestigationTimeline(id, false)
+  await loadActionAudits(id, false)
 }
 
 async function loadInvestigationDetail(id, silent = false) {
@@ -755,6 +845,7 @@ async function loadInvestigationDetail(id, silent = false) {
     const { data } = await getInvestigationDetail(id)
     if (selectedInvestigationId.value === id) {
       selectedDetail.value = data
+      actionAudits.value = Array.isArray(data?.recentActionAudits) ? data.recentActionAudits : actionAudits.value
       if (!snapshotDraft.value || !silent) {
         snapshotDraft.value = data?.latestSnapshot?.reportMarkdown || ''
       }
@@ -781,6 +872,19 @@ async function loadInvestigationTimeline(id, silent = false) {
     }
   } finally {
     if (!silent) loadingDetail.value = false
+  }
+}
+
+async function loadActionAudits(id, silent = false) {
+  try {
+    const { data } = await getInvestigationActionAudits(id, { page: 0, size: 50 })
+    if (selectedInvestigationId.value === id) {
+      actionAudits.value = Array.isArray(data?.content) ? data.content : []
+    }
+  } catch (_e) {
+    if (!silent) {
+      ElMessage.error(locale.value === 'zh' ? '加载治理审计失败' : 'Failed to load governance audits')
+    }
   }
 }
 
@@ -819,6 +923,7 @@ async function runStructuredAnalysis() {
     ElMessage.success(locale.value === 'zh' ? 'AI 结构化分析已完成' : 'AI structured analysis completed')
     await loadInvestigationDetail(investigationId, true)
     await loadInvestigationTimeline(investigationId, true)
+    await loadActionAudits(investigationId, true)
     await loadQualitySummary(true)
   } catch (_e) {
     ElMessage.error(locale.value === 'zh' ? 'AI 分析失败' : 'AI analysis failed')
@@ -839,6 +944,7 @@ async function generatePostmortemDraft() {
     ElMessage.success(locale.value === 'zh' ? '复盘草稿已生成' : 'Postmortem draft generated')
     await loadInvestigationDetail(investigationId, true)
     await loadInvestigationTimeline(investigationId, true)
+    await loadActionAudits(investigationId, true)
   } catch (_e) {
     ElMessage.error(locale.value === 'zh' ? '生成复盘草稿失败' : 'Failed to generate postmortem')
   } finally {
@@ -872,6 +978,7 @@ async function createObservation() {
     ElMessage.success(locale.value === 'zh' ? '证据观测已写入' : 'Observation added')
     await loadInvestigationDetail(investigationId, true)
     await loadInvestigationTimeline(investigationId, true)
+    await loadActionAudits(investigationId, true)
   } catch (_e) {
     ElMessage.error(locale.value === 'zh' ? '新增证据失败' : 'Failed to add observation')
   } finally {
@@ -901,6 +1008,7 @@ async function createHypothesis() {
     ElMessage.success(locale.value === 'zh' ? '根因假设已创建' : 'Hypothesis created')
     await loadInvestigationDetail(investigationId, true)
     await loadInvestigationTimeline(investigationId, true)
+    await loadActionAudits(investigationId, true)
   } catch (_e) {
     ElMessage.error(locale.value === 'zh' ? '创建假设失败' : 'Failed to create hypothesis')
   } finally {
@@ -915,6 +1023,13 @@ async function createActionPlan() {
     ElMessage.warning(locale.value === 'zh' ? '请填写动作标题' : 'Please input action title')
     return
   }
+  if (actionDraft.riskLevel === 'HIGH' && !actionDraft.rollbackPlan.trim()) {
+    ElMessage.warning(locale.value === 'zh' ? 'HIGH 风险动作必须填写回滚方案' : 'Rollback plan is required for HIGH risk actions')
+    return
+  }
+  if (actionDraft.riskLevel !== 'LOW') {
+    actionDraft.requiresApproval = true
+  }
   actionSubmitting.value = true
   try {
     await createInvestigationAction(investigationId, {
@@ -922,19 +1037,70 @@ async function createActionPlan() {
       title: actionDraft.title.trim(),
       commandText: actionDraft.commandText.trim() || undefined,
       riskLevel: actionDraft.riskLevel,
-      requiresApproval: actionDraft.requiresApproval
+      requiresApproval: actionDraft.requiresApproval,
+      rollbackPlan: actionDraft.rollbackPlan.trim() || undefined
     })
     actionDraft.title = ''
     actionDraft.commandText = ''
     actionDraft.riskLevel = 'MEDIUM'
     actionDraft.requiresApproval = true
+    actionDraft.rollbackPlan = ''
     ElMessage.success(locale.value === 'zh' ? '动作计划已创建' : 'Action created')
     await loadInvestigationDetail(investigationId, true)
     await loadInvestigationTimeline(investigationId, true)
+    await loadActionAudits(investigationId, true)
   } catch (_e) {
     ElMessage.error(locale.value === 'zh' ? '创建动作失败' : 'Failed to create action')
   } finally {
     actionSubmitting.value = false
+  }
+}
+
+async function rollbackDrill(action) {
+  const investigationId = selectedDetail.value?.investigation?.id
+  if (!investigationId || !action?.id) return
+  actionOperatingId.value = action.id
+  actionOperatingType.value = 'rollbackDrill'
+  try {
+    await rollbackDrillAction(investigationId, action.id, {
+      status: 'SUCCESS',
+      executionMode: 'MANUAL',
+      note: 'Rollback drill triggered via AI Expert Panel.',
+      outputText: 'Rollback drill passed.'
+    })
+    ElMessage.success(locale.value === 'zh' ? '回滚演练记录已写入' : 'Rollback drill recorded')
+    await loadInvestigationDetail(investigationId, true)
+    await loadInvestigationTimeline(investigationId, true)
+    await loadActionAudits(investigationId, true)
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? '回滚演练失败' : 'Rollback drill failed')
+  } finally {
+    actionOperatingId.value = null
+    actionOperatingType.value = ''
+  }
+}
+
+async function rollbackExecute(action) {
+  const investigationId = selectedDetail.value?.investigation?.id
+  if (!investigationId || !action?.id) return
+  actionOperatingId.value = action.id
+  actionOperatingType.value = 'rollbackExecute'
+  try {
+    await rollbackExecuteAction(investigationId, action.id, {
+      status: 'SUCCESS',
+      executionMode: 'MANUAL',
+      note: 'Rollback executed via AI Expert Panel.',
+      outputText: 'Rollback execution completed.'
+    })
+    ElMessage.success(locale.value === 'zh' ? '回滚执行完成' : 'Rollback executed')
+    await loadInvestigationDetail(investigationId, true)
+    await loadInvestigationTimeline(investigationId, true)
+    await loadActionAudits(investigationId, true)
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? '回滚执行失败' : 'Rollback execution failed')
+  } finally {
+    actionOperatingId.value = null
+    actionOperatingType.value = ''
   }
 }
 
@@ -948,6 +1114,7 @@ async function approveAction(action) {
     ElMessage.success(locale.value === 'zh' ? '审批完成' : 'Approved')
     await loadInvestigationDetail(investigationId, true)
     await loadInvestigationTimeline(investigationId, true)
+    await loadActionAudits(investigationId, true)
   } catch (_e) {
     ElMessage.error(locale.value === 'zh' ? '审批失败' : 'Approve failed')
   } finally {
@@ -970,6 +1137,7 @@ async function executeAction(action) {
     ElMessage.success(locale.value === 'zh' ? '执行记录已写入' : 'Execution recorded')
     await loadInvestigationDetail(investigationId, true)
     await loadInvestigationTimeline(investigationId, true)
+    await loadActionAudits(investigationId, true)
   } catch (_e) {
     ElMessage.error(locale.value === 'zh' ? '执行失败' : 'Execute failed')
   } finally {
@@ -992,6 +1160,7 @@ async function retryAction(action) {
     ElMessage.success(locale.value === 'zh' ? '重试记录已写入' : 'Retry recorded')
     await loadInvestigationDetail(investigationId, true)
     await loadInvestigationTimeline(investigationId, true)
+    await loadActionAudits(investigationId, true)
     await loadQualitySummary(true)
   } catch (_e) {
     ElMessage.error(locale.value === 'zh' ? '重试失败' : 'Retry failed')
@@ -1015,6 +1184,7 @@ async function saveSnapshot() {
     ElMessage.success(locale.value === 'zh' ? '快照已保存' : 'Snapshot saved')
     await loadInvestigationDetail(investigationId, true)
     await loadInvestigationTimeline(investigationId, true)
+    await loadActionAudits(investigationId, true)
   } catch (_e) {
     ElMessage.error(locale.value === 'zh' ? '保存快照失败' : 'Failed to save snapshot')
   } finally {
@@ -1672,6 +1842,10 @@ onUnmounted(() => {
   white-space: pre-wrap;
 }
 
+.action-command.rollback-plan {
+  color: var(--text-3);
+}
+
 .action-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -1686,6 +1860,10 @@ onUnmounted(() => {
   gap: 8px;
   overflow: auto;
   padding-right: 2px;
+}
+
+.top-gap {
+  margin-top: 10px;
 }
 
 .execution-item {

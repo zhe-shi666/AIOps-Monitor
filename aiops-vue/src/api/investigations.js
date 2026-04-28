@@ -13,4 +13,7 @@ export const createInvestigationAction = (id, payload) => api.post(`/api/investi
 export const approveInvestigationAction = (id, actionId) => api.post(`/api/investigations/${id}/actions/${actionId}/approve`)
 export const executeInvestigationAction = (id, actionId, payload) => api.post(`/api/investigations/${id}/actions/${actionId}/execute`, payload || {})
 export const retryInvestigationAction = (id, actionId, payload) => api.post(`/api/investigations/${id}/actions/${actionId}/retry`, payload || {})
+export const rollbackDrillAction = (id, actionId, payload) => api.post(`/api/investigations/${id}/actions/${actionId}/rollback-drill`, payload || {})
+export const rollbackExecuteAction = (id, actionId, payload) => api.post(`/api/investigations/${id}/actions/${actionId}/rollback-execute`, payload || {})
+export const getInvestigationActionAudits = (id, params) => api.get(`/api/investigations/${id}/actions/audits`, { params })
 export const createInvestigationSnapshot = (id, payload) => api.post(`/api/investigations/${id}/snapshots`, payload)
