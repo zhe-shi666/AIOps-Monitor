@@ -4,15 +4,19 @@ import com.aiops.monitor.model.entity.AiActionPlan;
 import com.aiops.monitor.model.entity.AiActionRun;
 import com.aiops.monitor.model.entity.AiHypothesis;
 import com.aiops.monitor.model.entity.AiInvestigation;
+import com.aiops.monitor.model.entity.AiModelTrace;
 import com.aiops.monitor.model.entity.AiObservation;
 import com.aiops.monitor.model.entity.AiReportSnapshot;
+import com.aiops.monitor.model.entity.RcaReport;
 import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.repository.AiActionPlanRepository;
 import com.aiops.monitor.repository.AiActionRunRepository;
 import com.aiops.monitor.repository.AiHypothesisRepository;
 import com.aiops.monitor.repository.AiInvestigationRepository;
+import com.aiops.monitor.repository.AiModelTraceRepository;
 import com.aiops.monitor.repository.AiObservationRepository;
 import com.aiops.monitor.repository.AiReportSnapshotRepository;
+import com.aiops.monitor.repository.RcaReportRepository;
 import com.aiops.monitor.service.CurrentUserService;
 import com.aiops.monitor.service.InvestigationEventPublisher;
 import com.aiops.monitor.service.InvestigationIntelligenceService;
@@ -35,6 +39,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -69,6 +74,10 @@ class InvestigationControllerWebMvcTest {
     private AiActionRunRepository aiActionRunRepository;
     @MockBean
     private AiReportSnapshotRepository aiReportSnapshotRepository;
+    @MockBean
+    private RcaReportRepository rcaReportRepository;
+    @MockBean
+    private AiModelTraceRepository aiModelTraceRepository;
     @MockBean
     private CurrentUserService currentUserService;
     @MockBean
@@ -121,6 +130,64 @@ class InvestigationControllerWebMvcTest {
                 .andExpect(jsonPath("$.windowDays").value(30))
                 .andExpect(jsonPath("$.openInvestigations").value(4))
                 .andExpect(jsonPath("$.falsePositiveRate").value(25.0));
+    }
+
+    @Test
+    void shouldReturnRcaReportsForInvestigation() throws Exception {
+        User user = buildUser(3L, "sre");
+        AiInvestigation investigation = new AiInvestigation();
+        investigation.setId(900L);
+
+        RcaReport report = new RcaReport();
+        report.setId(501L);
+        report.setInvestigationId(900L);
+        report.setUserId(3L);
+        report.setConfidence(0.86d);
+        report.setSummaryMd("CPU saturation by backup task");
+
+        when(currentUserService.requireUser(any())).thenReturn(user);
+        when(aiInvestigationRepository.findByIdAndUserId(900L, 3L)).thenReturn(Optional.of(investigation));
+        when(rcaReportRepository.findByInvestigationIdAndUserIdOrderByCreatedAtDesc(eq(900L), eq(3L), any(Pageable.class)))
+                .thenReturn(List.of(report));
+
+        mockMvc.perform(get("/api/investigations/900/rca-reports").param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(501))
+                .andExpect(jsonPath("$[0].confidence").value(0.86))
+                .andExpect(jsonPath("$[0].summaryMd").value("CPU saturation by backup task"));
+    }
+
+    @Test
+    void shouldReturnModelTracePageForInvestigation() throws Exception {
+        User user = buildUser(4L, "ops");
+        AiInvestigation investigation = new AiInvestigation();
+        investigation.setId(901L);
+
+        AiModelTrace trace = new AiModelTrace();
+        trace.setId(601L);
+        trace.setInvestigationId(901L);
+        trace.setUserId(4L);
+        trace.setPhase("STRUCTURED_ANALYSIS");
+        trace.setStatus("SUCCESS");
+
+        Page<AiModelTrace> page = new PageImpl<>(
+                List.of(trace),
+                PageRequest.of(0, 10),
+                1
+        );
+
+        when(currentUserService.requireUser(any())).thenReturn(user);
+        when(aiInvestigationRepository.findByIdAndUserId(901L, 4L)).thenReturn(Optional.of(investigation));
+        when(aiModelTraceRepository.findByInvestigationIdAndUserIdOrderByCreatedAtDesc(eq(901L), eq(4L), any(Pageable.class)))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/api/investigations/901/model-traces")
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(601))
+                .andExpect(jsonPath("$.content[0].phase").value("STRUCTURED_ANALYSIS"))
+                .andExpect(jsonPath("$.content[0].status").value("SUCCESS"));
     }
 
     private User buildUser(Long id, String username) {

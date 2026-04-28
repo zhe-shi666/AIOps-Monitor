@@ -14,4 +14,6 @@ public interface SystemMetricsRepository extends JpaRepository<SystemMetricsHist
 
     // 本地模式：仅获取当前节点最近20条数据
     List<SystemMetricsHistory> findTop20ByHostnameOrderByTimestampDesc(String hostname);
+
+    List<SystemMetricsHistory> findTop80ByUserIdAndTargetIdOrderByTimestampDesc(Long userId, Long targetId);
 }

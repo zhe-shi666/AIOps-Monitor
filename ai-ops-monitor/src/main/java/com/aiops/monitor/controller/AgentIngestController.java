@@ -12,6 +12,7 @@ import com.aiops.monitor.repository.IncidentLogRepository;
 import com.aiops.monitor.repository.MonitorTargetRepository;
 import com.aiops.monitor.repository.SystemMetricsRepository;
 import com.aiops.monitor.service.EscalationPolicyService;
+import com.aiops.monitor.service.AnomalyDetectionService;
 import com.aiops.monitor.service.InvestigationOrchestrator;
 import com.aiops.monitor.service.MetricsPublisher;
 import com.aiops.monitor.service.NotificationDispatcherService;
@@ -45,6 +46,7 @@ public class AgentIngestController {
     private final EscalationPolicyService escalationPolicyService;
     private final NotificationDispatcherService notificationDispatcherService;
     private final InvestigationOrchestrator investigationOrchestrator;
+    private final AnomalyDetectionService anomalyDetectionService;
     private final Map<String, LocalDateTime> lastAlertAt = new ConcurrentHashMap<>();
     private final Map<String, Integer> breachCounter = new ConcurrentHashMap<>();
 
@@ -103,6 +105,7 @@ public class AgentIngestController {
         history.setUserId(target.getUserId());
         history.setTargetId(target.getId());
         systemMetricsRepository.save(history);
+        anomalyDetectionService.detectAndPersist(history);
 
         sendMetric("CPU", request.getCpuUsage(), request, target);
         sendMetric("MEMORY", request.getMemUsage(), request, target);

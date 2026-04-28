@@ -16,6 +16,8 @@ import com.aiops.monitor.model.entity.AiHypothesis;
 import com.aiops.monitor.model.entity.AiInvestigation;
 import com.aiops.monitor.model.entity.AiObservation;
 import com.aiops.monitor.model.entity.AiReportSnapshot;
+import com.aiops.monitor.model.entity.AiModelTrace;
+import com.aiops.monitor.model.entity.RcaReport;
 import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.repository.AiActionPlanRepository;
 import com.aiops.monitor.repository.AiActionRunRepository;
@@ -23,6 +25,8 @@ import com.aiops.monitor.repository.AiHypothesisRepository;
 import com.aiops.monitor.repository.AiInvestigationRepository;
 import com.aiops.monitor.repository.AiObservationRepository;
 import com.aiops.monitor.repository.AiReportSnapshotRepository;
+import com.aiops.monitor.repository.AiModelTraceRepository;
+import com.aiops.monitor.repository.RcaReportRepository;
 import com.aiops.monitor.service.CurrentUserService;
 import com.aiops.monitor.service.InvestigationEventPublisher;
 import com.aiops.monitor.service.InvestigationIntelligenceService;
@@ -57,6 +61,8 @@ public class InvestigationController {
     private final AiActionPlanRepository aiActionPlanRepository;
     private final AiActionRunRepository aiActionRunRepository;
     private final AiReportSnapshotRepository aiReportSnapshotRepository;
+    private final RcaReportRepository rcaReportRepository;
+    private final AiModelTraceRepository aiModelTraceRepository;
     private final CurrentUserService currentUserService;
     private final InvestigationQualityService investigationQualityService;
     private final InvestigationIntelligenceService investigationIntelligenceService;
@@ -133,7 +139,36 @@ public class InvestigationController {
         result.put("actionRuns", aiActionRunRepository.findByInvestigationIdAndUserIdOrderByCreatedAtAsc(id, user.getId()));
         result.put("latestSnapshot", aiReportSnapshotRepository.findFirstByInvestigationIdAndUserIdOrderByVersionNoDesc(id, user.getId()).orElse(null));
         result.put("snapshots", aiReportSnapshotRepository.findByInvestigationIdAndUserIdOrderByVersionNoDesc(id, user.getId()));
+        result.put("latestRcaReport", rcaReportRepository.findFirstByInvestigationIdAndUserIdOrderByCreatedAtDesc(id, user.getId()).orElse(null));
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/{id}/rca-reports")
+    public ResponseEntity<List<RcaReport>> rcaReports(@PathVariable Long id,
+                                                      @RequestParam(defaultValue = "10") int size,
+                                                      Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        requireInvestigation(id, user.getId());
+        int limitedSize = Math.max(1, Math.min(50, size));
+        List<RcaReport> reports = rcaReportRepository.findByInvestigationIdAndUserIdOrderByCreatedAtDesc(
+                id,
+                user.getId(),
+                PageRequest.of(0, limitedSize)
+        );
+        return ResponseEntity.ok(reports);
+    }
+
+    @GetMapping("/{id}/model-traces")
+    public ResponseEntity<Page<AiModelTrace>> modelTraces(@PathVariable Long id,
+                                                          @RequestParam(defaultValue = "0") int page,
+                                                          @RequestParam(defaultValue = "20") int size,
+                                                          Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        requireInvestigation(id, user.getId());
+        int safeSize = Math.max(1, Math.min(100, size));
+        PageRequest pageable = PageRequest.of(Math.max(0, page), safeSize, Sort.by("createdAt").descending());
+        Page<AiModelTrace> traces = aiModelTraceRepository.findByInvestigationIdAndUserIdOrderByCreatedAtDesc(id, user.getId(), pageable);
+        return ResponseEntity.ok(traces);
     }
 
     @GetMapping("/{id}/timeline")

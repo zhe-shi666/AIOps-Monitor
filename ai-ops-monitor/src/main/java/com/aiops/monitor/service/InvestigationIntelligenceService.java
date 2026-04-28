@@ -3,22 +3,29 @@ package com.aiops.monitor.service;
 import com.aiops.monitor.model.entity.AiActionPlan;
 import com.aiops.monitor.model.entity.AiHypothesis;
 import com.aiops.monitor.model.entity.AiInvestigation;
+import com.aiops.monitor.model.entity.AiModelTrace;
 import com.aiops.monitor.model.entity.AiObservation;
 import com.aiops.monitor.model.entity.AiReportSnapshot;
+import com.aiops.monitor.model.entity.RcaReport;
 import com.aiops.monitor.repository.AiActionPlanRepository;
 import com.aiops.monitor.repository.AiHypothesisRepository;
 import com.aiops.monitor.repository.AiInvestigationRepository;
+import com.aiops.monitor.repository.AiModelTraceRepository;
 import com.aiops.monitor.repository.AiObservationRepository;
 import com.aiops.monitor.repository.AiReportSnapshotRepository;
+import com.aiops.monitor.repository.RcaReportRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -39,9 +46,14 @@ public class InvestigationIntelligenceService {
     private final AiHypothesisRepository aiHypothesisRepository;
     private final AiActionPlanRepository aiActionPlanRepository;
     private final AiReportSnapshotRepository aiReportSnapshotRepository;
+    private final RcaReportRepository rcaReportRepository;
+    private final AiModelTraceRepository aiModelTraceRepository;
     private final AiService aiService;
     private final InvestigationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+
+    @Value("${spring.ai.ollama.chat.options.model:unknown}")
+    private String modelName;
 
     @Transactional
     public Map<String, Object> generateAndPersist(Long investigationId,
@@ -123,6 +135,19 @@ public class InvestigationIntelligenceService {
         snapshot.setCreatedAt(LocalDateTime.now());
         AiReportSnapshot savedSnapshot = aiReportSnapshotRepository.save(snapshot);
 
+        RcaReport rcaReport = new RcaReport();
+        rcaReport.setInvestigationId(investigationId);
+        rcaReport.setUserId(userId);
+        rcaReport.setIncidentId(investigation.getIncidentId());
+        rcaReport.setTargetId(investigation.getTargetId());
+        rcaReport.setSummaryMd(analysis.reportMarkdown());
+        rcaReport.setEvidenceJson(analysis.evidenceJson());
+        rcaReport.setConfidence(analysis.confidence());
+        rcaReport.setModelName(modelName);
+        rcaReport.setPromptHash(sha256Hex(analysis.prompt()));
+        rcaReport.setCreatedAt(LocalDateTime.now());
+        RcaReport savedRca = rcaReportRepository.save(rcaReport);
+
         Integer postmortemVersion = null;
         if (includePostmortem) {
             AiReportSnapshot pm = createPostmortemSnapshot(
@@ -153,6 +178,7 @@ public class InvestigationIntelligenceService {
         result.put("createdActionPlans", createdActions);
         result.put("riskLevel", analysis.riskLevel());
         result.put("postmortemVersion", postmortemVersion);
+        result.put("rcaReportId", savedRca.getId());
         return result;
     }
 
@@ -200,12 +226,22 @@ public class InvestigationIntelligenceService {
                                            List<AiObservation> observations,
                                            String promptHint) {
         String prompt = buildStructuredPrompt(investigation, observations, promptHint);
-        String raw = aiService.analyzeData(prompt);
+        long start = System.currentTimeMillis();
+        String raw;
+        try {
+            raw = aiService.analyzeData(prompt);
+        } catch (Exception ex) {
+            saveModelTrace(investigation.getUserId(), investigation.getId(), "STRUCTURED_ANALYSIS",
+                    prompt, null, System.currentTimeMillis() - start, "FAILED", ex.getMessage());
+            throw ex;
+        }
+        saveModelTrace(investigation.getUserId(), investigation.getId(), "STRUCTURED_ANALYSIS",
+                prompt, raw, System.currentTimeMillis() - start, "SUCCESS", null);
         StructuredAnalysis parsed = parseStructuredAnalysis(raw);
         if (parsed != null) {
-            return parsed;
+            return parsed.withPrompt(prompt);
         }
-        return fallbackAnalysis(investigation, observations);
+        return fallbackAnalysis(investigation, observations).withPrompt(prompt);
     }
 
     private StructuredAnalysis parseStructuredAnalysis(String raw) {
@@ -223,6 +259,7 @@ public class InvestigationIntelligenceService {
             List<ActionDraft> actions = parseActions(root.path("actionPlans"));
             String reportMarkdown = nonBlank(root.path("reportMarkdown").asText(null), buildReportMarkdown(summary, rootCause, riskLevel, hypotheses, actions));
             String postmortemDraft = nonBlank(root.path("postmortemDraft").asText(null), buildSimplePostmortem(summary, rootCause, actions));
+            String evidenceJson = buildEvidenceJson(root.path("evidenceChain"), hypotheses, actions);
             return new StructuredAnalysis(
                     summary,
                     rootCause,
@@ -232,6 +269,8 @@ public class InvestigationIntelligenceService {
                     actions,
                     reportMarkdown,
                     objectMapper.writeValueAsString(root),
+                    evidenceJson,
+                    null,
                     postmortemDraft
             );
         } catch (Exception ex) {
@@ -290,6 +329,7 @@ public class InvestigationIntelligenceService {
         )).toList());
         json.put("reportMarkdown", reportMarkdown);
         json.put("postmortemDraft", buildSimplePostmortem(summary, rootCause, actions));
+        json.put("evidenceChain", buildFallbackEvidence(observations, 6));
         try {
             return new StructuredAnalysis(
                     summary,
@@ -300,6 +340,8 @@ public class InvestigationIntelligenceService {
                     actions,
                     reportMarkdown,
                     objectMapper.writeValueAsString(json),
+                    objectMapper.writeValueAsString(json.get("evidenceChain")),
+                    null,
                     buildSimplePostmortem(summary, rootCause, actions)
             );
         } catch (Exception ex) {
@@ -378,6 +420,7 @@ public class InvestigationIntelligenceService {
                   "hypotheses":[{"title":"string","reasoning":"string","confidence":0.0,"status":"CANDIDATE|CONFIRMED|REJECTED"}],
                   "actionPlans":[{"actionType":"RUNBOOK|COMMAND","title":"string","commandText":"string","runbookRef":"string","riskLevel":"LOW|MEDIUM|HIGH","requiresApproval":true,"rollbackPlan":"string"}],
                   "reportMarkdown":"string",
+                  "evidenceChain":[{"type":"METRIC|LOG|TRACE|EVENT","sourceRef":"string","detail":"string","confidence":0.0}],
                   "postmortemDraft":"string"
                 }
 
@@ -444,7 +487,17 @@ public class InvestigationIntelligenceService {
                 nonBlank(additionalContext, "none")
         );
 
-        String markdown = aiService.analyzeData(prompt);
+        long start = System.currentTimeMillis();
+        String markdown;
+        try {
+            markdown = aiService.analyzeData(prompt);
+            saveModelTrace(investigation.getUserId(), investigation.getId(), "POSTMORTEM_DRAFT",
+                    prompt, markdown, System.currentTimeMillis() - start, "SUCCESS", null);
+        } catch (Exception ex) {
+            saveModelTrace(investigation.getUserId(), investigation.getId(), "POSTMORTEM_DRAFT",
+                    prompt, null, System.currentTimeMillis() - start, "FAILED", ex.getMessage());
+            throw ex;
+        }
         if (markdown == null || markdown.isBlank()) {
             return buildSimplePostmortem(
                     nonBlank(investigation.getSummary(), "No summary"),
@@ -611,6 +664,90 @@ public class InvestigationIntelligenceService {
         return Math.min(value, 1d);
     }
 
+    private void saveModelTrace(Long userId,
+                                Long investigationId,
+                                String phase,
+                                String prompt,
+                                String response,
+                                Long latencyMs,
+                                String status,
+                                String errorMessage) {
+        AiModelTrace trace = new AiModelTrace();
+        trace.setUserId(userId);
+        trace.setInvestigationId(investigationId);
+        trace.setPhase(phase);
+        trace.setModelName(modelName);
+        trace.setPromptText(trimForStorage(prompt));
+        trace.setResponseText(trimForStorage(response));
+        trace.setPromptTokens(estimateTokens(prompt));
+        trace.setResponseTokens(estimateTokens(response));
+        trace.setLatencyMs(latencyMs);
+        trace.setStatus(nonBlank(status, "SUCCESS"));
+        trace.setErrorMessage(trimForStorage(errorMessage));
+        trace.setCreatedAt(LocalDateTime.now());
+        aiModelTraceRepository.save(trace);
+    }
+
+    private Integer estimateTokens(String text) {
+        if (text == null || text.isBlank()) return 0;
+        return Math.max(1, text.trim().length() / 4);
+    }
+
+    private String trimForStorage(String text) {
+        if (text == null) return null;
+        if (text.length() <= 20000) return text;
+        return text.substring(0, 20000);
+    }
+
+    private String sha256Hex(String text) {
+        if (text == null) return null;
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(text.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : bytes) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private String buildEvidenceJson(JsonNode evidenceNode,
+                                     List<HypothesisDraft> hypotheses,
+                                     List<ActionDraft> actions) {
+        try {
+            if (evidenceNode != null && evidenceNode.isArray()) {
+                return objectMapper.writeValueAsString(evidenceNode);
+            }
+            Map<String, Object> fallback = new LinkedHashMap<>();
+            fallback.put("hypothesisCount", hypotheses == null ? 0 : hypotheses.size());
+            fallback.put("actionPlanCount", actions == null ? 0 : actions.size());
+            fallback.put("message", "No explicit evidenceChain in model output, fallback summary generated.");
+            return objectMapper.writeValueAsString(List.of(fallback));
+        } catch (Exception ex) {
+            return "[]";
+        }
+    }
+
+    private List<Map<String, Object>> buildFallbackEvidence(List<AiObservation> observations, int limit) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        int start = Math.max(0, observations.size() - limit);
+        for (int i = start; i < observations.size(); i++) {
+            AiObservation obs = observations.get(i);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("type", nonBlank(obs.getType(), "METRIC"));
+            item.put("metric", nonBlank(obs.getMetricName(), nonBlank(obs.getSourceRef(), "N/A")));
+            item.put("value", obs.getMetricValue());
+            item.put("host", nonBlank(obs.getHostname(), "unknown-host"));
+            item.put("time", obs.getObservedAt() == null ? obs.getCreatedAt() : obs.getObservedAt());
+            item.put("confidence", obs.getConfidence());
+            result.add(item);
+        }
+        return result;
+    }
+
     private record StructuredAnalysis(
             String summary,
             String rootCause,
@@ -620,8 +757,14 @@ public class InvestigationIntelligenceService {
             List<ActionDraft> actionPlans,
             String reportMarkdown,
             String reportJson,
+            String evidenceJson,
+            String prompt,
             String postmortemDraft
     ) {
+        private StructuredAnalysis withPrompt(String value) {
+            return new StructuredAnalysis(summary, rootCause, confidence, riskLevel, hypotheses, actionPlans,
+                    reportMarkdown, reportJson, evidenceJson, value, postmortemDraft);
+        }
     }
 
     private record HypothesisDraft(
