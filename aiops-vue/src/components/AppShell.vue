@@ -88,10 +88,6 @@
         <main class="shell-content">
           <router-view />
         </main>
-
-        <aside class="shell-right-panel">
-          <AiExpertPanel />
-        </aside>
       </div>
     </div>
   </div>
@@ -104,7 +100,6 @@ import { useAuthStore } from '../stores/auth'
 import { useTheme } from '../composables/useTheme'
 import { useLocaleMode } from '../composables/useLocaleMode'
 import { useI18n } from '../composables/useI18n'
-import AiExpertPanel from './AiExpertPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -117,6 +112,7 @@ const { isZh, t } = useI18n({
   'group.settings': { zh: '设置', en: 'Settings' },
   'group.admin': { zh: '管理', en: 'Admin' },
   'nav.overview': { zh: '总览看板', en: 'Overview' },
+  'nav.aiExpert': { zh: 'AI 专家', en: 'AI Expert' },
   'nav.targets': { zh: '监控目标', en: 'Targets' },
   'nav.incidents': { zh: '告警中心', en: 'Incidents' },
   'nav.thresholds': { zh: '阈值策略', en: 'Thresholds' },
@@ -135,6 +131,7 @@ const { isZh, t } = useI18n({
 
 const monitorNav = computed(() => [
   { path: '/', label: t('nav.overview') },
+  { path: '/ai-expert', label: t('nav.aiExpert') },
   { path: '/targets', label: t('nav.targets') },
   { path: '/incidents', label: t('nav.incidents') }
 ])
@@ -153,6 +150,10 @@ const headerMap = computed(() => ({
   '/targets': {
     title: isZh.value ? '监控目标资产' : 'Target Inventory',
     subtitle: isZh.value ? '主机目标、Agent 密钥与状态管理' : 'Host targets, agent keys, and status management'
+  },
+  '/ai-expert': {
+    title: isZh.value ? 'AI 专家中心' : 'AI Expert Console',
+    subtitle: isZh.value ? '调查、诊断、执行与复盘的统一工作流' : 'Unified workflow for investigations, actions, and postmortems'
   },
   '/incidents': {
     title: isZh.value ? '告警事件中心' : 'Incident Center',

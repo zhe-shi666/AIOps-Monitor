@@ -17,14 +17,14 @@
       </div>
     </header>
 
-    <main class="grid grid-cols-1 2xl:grid-cols-12 gap-6 relative z-10">
-      <section class="2xl:col-span-8">
-        <div class="card-panel-strong p-4 md:p-8">
-          <div class="flex justify-between items-center px-4">
-            <h2 class="tone-subtle font-medium tracking-widest uppercase text-sm pl-2">
+    <main class="overview-layout grid grid-cols-1 2xl:grid-cols-12 gap-8 relative z-10 items-start">
+      <section class="overview-panel 2xl:col-span-8">
+        <div class="card-panel-strong overview-card-shell overview-card-shell-strong">
+          <div class="flex justify-between items-center px-6">
+            <h2 class="tone-subtle font-medium tracking-widest uppercase text-sm">
               {{ isZh ? '系统实时指标' : 'Real-time Metrics' }}
             </h2>
-            <div class="flex gap-6 font-mono text-sm pr-2">
+            <div class="flex gap-6 font-mono text-sm">
               <span class="text-cyan-400 font-semibold">
                 {{ isZh ? '节点数' : 'Nodes' }}: {{ nodeCount }}
               </span>
@@ -32,7 +32,7 @@
             </div>
           </div>
 
-          <div class="flex flex-wrap gap-2 mt-6 mb-8 px-4">
+          <div class="flex flex-wrap gap-2 mt-7 mb-10 px-6">
             <button
               v-for="metric in metricOptions"
               :key="metric.key"
@@ -45,7 +45,7 @@
             </button>
           </div>
 
-          <div class="flex justify-between items-center mb-4 px-4">
+          <div class="flex justify-between items-center mb-5 px-6">
             <p class="text-xs tone-muted">
               {{ isZh ? '当前指标' : 'Current Metric' }}:
               <span class="text-cyan-300 font-semibold">{{ selectedMetricLabel }}</span>
@@ -55,12 +55,12 @@
             </p>
           </div>
 
-          <div ref="chartRef" class="chart-surface h-80 w-full mt-6" style="min-height: 320px;"></div>
+          <div ref="chartRef" class="chart-surface h-80 w-full mt-8" style="min-height: 320px;"></div>
         </div>
       </section>
 
-      <section class="2xl:col-span-4">
-        <div class="card-panel p-6 space-y-4">
+      <section class="overview-panel 2xl:col-span-4">
+        <div class="card-panel overview-card-shell space-y-6">
           <div class="section-head mb-0">
             <div>
               <h2 class="section-title text-base">{{ isZh ? '运行概览' : 'Runtime Snapshot' }}</h2>
@@ -426,6 +426,36 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.page-surface {
+  min-height: 100%;
+  overflow: visible;
+  padding-bottom: 18px;
+}
+
+.overview-layout {
+  align-content: start;
+  padding-bottom: 8px;
+}
+
+.overview-panel {
+  min-width: 0;
+}
+
+.overview-card-shell {
+  padding: 22px 24px;
+}
+
+.overview-card-shell-strong {
+  padding: 24px 26px;
+}
+
+@media (max-width: 1280px) {
+  .overview-card-shell,
+  .overview-card-shell-strong {
+    padding: 18px 18px;
+  }
+}
+
 .tone-subtle {
   color: var(--text-2);
 }

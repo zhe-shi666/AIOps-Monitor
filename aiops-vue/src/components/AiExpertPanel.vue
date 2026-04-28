@@ -11,10 +11,14 @@
     </div>
 
     <div class="ai-note">
-      {{ locale === 'zh'
-        ? '右侧工作台支持调查对象、时间线与 AI 报告双视图。'
-        : 'Right-side console supports investigations, timeline, and AI report dual views.'
-      }}
+      <strong>{{ locale === 'zh' ? '工作流：' : 'Workflow:' }}</strong>
+      <span>
+        {{
+          locale === 'zh'
+            ? '先选调查对象，再按总览 → 证据 → 假设 → 动作 → 时间线推进。'
+            : 'Pick an investigation, then proceed with Overview → Evidence → Hypothesis → Actions → Timeline.'
+        }}
+      </span>
     </div>
 
     <div class="ai-toolbar">
@@ -36,48 +40,61 @@
       </div>
     </div>
 
-    <div v-if="activeTab === 'investigations'" class="investigation-view">
-      <div v-if="qualitySummary" class="quality-grid">
-        <div class="quality-item">
-          <p class="quality-label">{{ locale === 'zh' ? '误报率' : 'False Positive' }}</p>
-          <p class="quality-value">{{ formatPercent(qualitySummary.falsePositiveRate) }}</p>
-        </div>
-        <div class="quality-item">
-          <p class="quality-label">{{ locale === 'zh' ? '执行成功率' : 'Run Success' }}</p>
-          <p class="quality-value">{{ formatPercent(qualitySummary.actionRunSuccessRate) }}</p>
-        </div>
-        <div class="quality-item">
-          <p class="quality-label">{{ locale === 'zh' ? '平均定位时长(分钟)' : 'Avg Resolve (min)' }}</p>
-          <p class="quality-value">{{ qualitySummary.mttrMinutes ?? 0 }}</p>
-        </div>
-        <div class="quality-item">
-          <p class="quality-label">{{ locale === 'zh' ? '进行中调查' : 'Open Investigations' }}</p>
-          <p class="quality-value">{{ qualitySummary.openInvestigations ?? 0 }}</p>
-        </div>
-      </div>
-
-      <div class="investigation-list">
-        <button
-          v-for="item in investigations"
-          :key="item.id"
-          class="investigation-item"
-          :class="{ active: selectedInvestigationId === item.id }"
-          @click="selectInvestigation(item.id)">
-          <p class="inv-title">{{ item.title || `Investigation #${item.id}` }}</p>
-          <div class="inv-meta">
-            <span class="inv-chip severity">{{ item.severity || 'P2' }}</span>
-            <span class="inv-chip">{{ item.status || '-' }}</span>
+    <div v-if="activeTab === 'investigations'" class="investigation-workbench">
+      <aside class="workbench-left">
+        <section class="side-section">
+          <div class="side-section-head">
+            <p class="side-title">{{ locale === 'zh' ? '质量概览' : 'Quality Overview' }}</p>
           </div>
-        </button>
+          <div v-if="qualitySummary" class="quality-grid">
+            <div class="quality-item">
+              <p class="quality-label">{{ locale === 'zh' ? '误报率' : 'False Positive' }}</p>
+              <p class="quality-value">{{ formatPercent(qualitySummary.falsePositiveRate) }}</p>
+            </div>
+            <div class="quality-item">
+              <p class="quality-label">{{ locale === 'zh' ? '执行成功率' : 'Run Success' }}</p>
+              <p class="quality-value">{{ formatPercent(qualitySummary.actionRunSuccessRate) }}</p>
+            </div>
+            <div class="quality-item">
+              <p class="quality-label">{{ locale === 'zh' ? '平均定位时长(分钟)' : 'Avg Resolve (min)' }}</p>
+              <p class="quality-value">{{ qualitySummary.mttrMinutes ?? 0 }}</p>
+            </div>
+            <div class="quality-item">
+              <p class="quality-label">{{ locale === 'zh' ? '进行中调查' : 'Open Investigations' }}</p>
+              <p class="quality-value">{{ qualitySummary.openInvestigations ?? 0 }}</p>
+            </div>
+          </div>
+        </section>
 
-        <div v-if="!investigations.length && !loadingInvestigations" class="ai-empty inline">
-          <p>{{ locale === 'zh' ? '暂无调查对象' : 'No investigations yet' }}</p>
-        </div>
-      </div>
+        <section class="side-section flex-grow">
+          <div class="side-section-head">
+            <p class="side-title">{{ locale === 'zh' ? '调查对象' : 'Investigations' }}</p>
+            <span class="side-count">{{ investigations.length }}</span>
+          </div>
+          <div class="investigation-list">
+            <button
+              v-for="item in investigations"
+              :key="item.id"
+              class="investigation-item"
+              :class="{ active: selectedInvestigationId === item.id }"
+              @click="selectInvestigation(item.id)">
+              <p class="inv-title">{{ item.title || `Investigation #${item.id}` }}</p>
+              <div class="inv-meta">
+                <span class="inv-chip severity">{{ item.severity || 'P2' }}</span>
+                <span class="inv-chip">{{ item.status || '-' }}</span>
+              </div>
+            </button>
 
-      <div class="investigation-detail">
+            <div v-if="!investigations.length && !loadingInvestigations" class="ai-empty inline">
+              <p>{{ locale === 'zh' ? '暂无调查对象' : 'No investigations yet' }}</p>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <section class="workbench-main">
         <div v-if="selectedDetail?.investigation" class="detail-card">
-          <div class="detail-head">
+          <div class="case-header">
             <div>
               <p class="detail-title">{{ selectedDetail.investigation.title || `Investigation #${selectedDetail.investigation.id}` }}</p>
               <p class="detail-sub">
@@ -109,292 +126,347 @@
             </div>
           </div>
 
-          <div v-if="selectedSnapshotHtml" class="report-snapshot prose" v-html="selectedSnapshotHtml"></div>
-          <div v-else class="ai-empty inline">
-            <p>{{ locale === 'zh' ? '暂无报告快照' : 'No report snapshot' }}</p>
-          </div>
-
-          <div class="snapshot-editor">
-            <el-input
-              v-model="snapshotDraft"
-              type="textarea"
-              :rows="3"
-              resize="none"
-              :placeholder="locale === 'zh' ? '可编辑当前报告，保存为新快照版本...' : 'Edit report and save as a new snapshot version...'" />
-            <div class="snapshot-editor-row">
-              <el-button
-                size="small"
-                plain
-                :loading="postmortemGenerating"
-                @click="generatePostmortemDraft">
-                {{ locale === 'zh' ? '生成复盘草稿' : 'Generate Postmortem' }}
-              </el-button>
-              <el-button
-                size="small"
-                type="primary"
-                plain
-                :disabled="!snapshotDraft.trim()"
-                :loading="snapshotSaving"
-                @click="saveSnapshot">
-                {{ locale === 'zh' ? '保存快照' : 'Save Snapshot' }}
-              </el-button>
+          <div class="overview-grid">
+            <div class="overview-item">
+              <p class="overview-label">{{ locale === 'zh' ? '证据' : 'Evidence' }}</p>
+              <p class="overview-value">{{ observations.length }}</p>
+            </div>
+            <div class="overview-item">
+              <p class="overview-label">{{ locale === 'zh' ? '假设' : 'Hypotheses' }}</p>
+              <p class="overview-value">{{ hypotheses.length }}</p>
+            </div>
+            <div class="overview-item">
+              <p class="overview-label">{{ locale === 'zh' ? '动作' : 'Actions' }}</p>
+              <p class="overview-value">{{ actionPlans.length }}</p>
+            </div>
+            <div class="overview-item">
+              <p class="overview-label">{{ locale === 'zh' ? '执行记录' : 'Runs' }}</p>
+              <p class="overview-value">{{ actionRuns.length }}</p>
             </div>
           </div>
 
-          <div class="observation-head">
-            <span>{{ locale === 'zh' ? '证据观测' : 'Observations' }}</span>
-            <span>{{ observations.length }}</span>
+          <div class="process-tabs">
+            <button
+              v-for="tab in detailTabs"
+              :key="tab.key"
+              class="process-tab"
+              :class="{ active: detailTab === tab.key }"
+              @click="detailTab = tab.key">
+              <span class="process-tab-content">
+                <span>{{ tab.label }}</span>
+                <span v-if="tab.count !== null" class="process-tab-count">{{ tab.count }}</span>
+              </span>
+            </button>
           </div>
 
-          <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="observation-create">
-            <div class="observation-create-row">
-              <el-select v-model="observationDraft.type" size="small" class="observation-type-select">
-                <el-option label="METRIC" value="METRIC" />
-                <el-option label="LOG" value="LOG" />
-                <el-option label="TRACE" value="TRACE" />
-                <el-option label="CHANGE" value="CHANGE" />
-                <el-option label="EVENT" value="EVENT" />
-              </el-select>
+          <div class="process-hint">{{ currentDetailTabHint }}</div>
+
+          <div v-if="detailTab === 'overview'" class="process-body">
+            <div class="section-title-row">
+              <p class="section-title">{{ locale === 'zh' ? 'AI 报告快照' : 'AI Report Snapshot' }}</p>
+            </div>
+            <div v-if="selectedSnapshotHtml" class="report-snapshot prose" v-html="selectedSnapshotHtml"></div>
+            <div v-else class="ai-empty inline">
+              <p>{{ locale === 'zh' ? '暂无报告快照' : 'No report snapshot' }}</p>
+            </div>
+
+            <div class="snapshot-editor">
               <el-input
-                v-model="observationDraft.metricName"
-                size="small"
-                :placeholder="locale === 'zh' ? '指标名，如 cpu.usage' : 'Metric name, e.g. cpu.usage'" />
+                v-model="snapshotDraft"
+                type="textarea"
+                :rows="4"
+                resize="none"
+                :placeholder="locale === 'zh' ? '可编辑当前报告，保存为新快照版本...' : 'Edit report and save as a new snapshot version...'" />
+              <div class="snapshot-editor-row">
+                <el-button
+                  size="small"
+                  plain
+                  :loading="postmortemGenerating"
+                  @click="generatePostmortemDraft">
+                  {{ locale === 'zh' ? '生成复盘草稿' : 'Generate Postmortem' }}
+                </el-button>
+                <el-button
+                  size="small"
+                  type="primary"
+                  plain
+                  :disabled="!snapshotDraft.trim()"
+                  :loading="snapshotSaving"
+                  @click="saveSnapshot">
+                  {{ locale === 'zh' ? '保存快照' : 'Save Snapshot' }}
+                </el-button>
+              </div>
             </div>
-            <div class="observation-create-row">
-              <el-input-number
-                v-model="observationDraft.metricValue"
-                size="small"
-                :step="0.1"
-                class="observation-number" />
+          </div>
+
+          <div v-else-if="detailTab === 'evidence'" class="process-body">
+            <div class="section-title-row">
+              <p class="section-title">{{ locale === 'zh' ? '证据观测' : 'Observations' }}</p>
+              <span class="section-count">{{ observations.length }}</span>
+            </div>
+
+            <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="observation-create">
+              <div class="observation-create-row">
+                <el-select v-model="observationDraft.type" size="small" class="observation-type-select">
+                  <el-option label="METRIC" value="METRIC" />
+                  <el-option label="LOG" value="LOG" />
+                  <el-option label="TRACE" value="TRACE" />
+                  <el-option label="CHANGE" value="CHANGE" />
+                  <el-option label="EVENT" value="EVENT" />
+                </el-select>
+                <el-input
+                  v-model="observationDraft.metricName"
+                  size="small"
+                  :placeholder="locale === 'zh' ? '指标名，如 cpu.usage' : 'Metric name, e.g. cpu.usage'" />
+              </div>
+              <div class="observation-create-row">
+                <el-input-number
+                  v-model="observationDraft.metricValue"
+                  size="small"
+                  :step="0.1"
+                  class="observation-number" />
+                <el-input
+                  v-model="observationDraft.hostname"
+                  size="small"
+                  :placeholder="locale === 'zh' ? '主机名（可选）' : 'Hostname (optional)'" />
+              </div>
               <el-input
-                v-model="observationDraft.hostname"
+                v-model="observationDraft.sourceRef"
                 size="small"
-                :placeholder="locale === 'zh' ? '主机名（可选）' : 'Hostname (optional)'" />
-            </div>
-            <el-input
-              v-model="observationDraft.sourceRef"
-              size="small"
-              :placeholder="locale === 'zh' ? '来源引用（日志ID、链路ID、任务ID）' : 'Source ref (log ID, trace ID, job ID)'" />
-            <div class="observation-create-row">
-              <el-input-number
-                v-model="observationDraft.confidence"
-                size="small"
-                :min="0"
-                :max="1"
-                :step="0.05"
-                :precision="2"
-                class="observation-confidence" />
-              <el-button size="small" type="primary" :loading="observationSubmitting" @click="createObservation">
-                {{ locale === 'zh' ? '新增证据' : 'Add Observation' }}
-              </el-button>
-            </div>
-          </div>
-
-          <div class="observation-list">
-            <div v-for="item in observations" :key="item.id" class="observation-item">
-              <div class="observation-item-head">
-                <p class="observation-title">{{ item.type }} · {{ item.metricName || item.sourceRef || 'N/A' }}</p>
-                <div class="action-tags">
-                  <span class="inv-chip">V={{ item.metricValue ?? '-' }}</span>
-                  <span class="inv-chip">C={{ typeof item.confidence === 'number' ? item.confidence.toFixed(2) : '-' }}</span>
-                </div>
-              </div>
-              <p class="observation-meta">
-                {{ formatDateTime(item.observedAt || item.createdAt) }} · {{ item.hostname || 'unknown-host' }}
-              </p>
-            </div>
-            <div v-if="!observations.length" class="ai-empty inline">
-              <p>{{ locale === 'zh' ? '暂无证据观测' : 'No observations yet' }}</p>
-            </div>
-          </div>
-
-          <div class="hypothesis-head">
-            <span>{{ locale === 'zh' ? '根因假设' : 'Hypotheses' }}</span>
-            <span>{{ hypotheses.length }}</span>
-          </div>
-
-          <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="hypothesis-create">
-            <el-input
-              v-model="hypothesisDraft.title"
-              size="small"
-              :placeholder="locale === 'zh' ? '假设标题，例如：JVM 堆外内存泄漏' : 'Hypothesis title, e.g. JVM off-heap memory leak'" />
-            <el-input
-              v-model="hypothesisDraft.reasoning"
-              type="textarea"
-              :rows="2"
-              resize="none"
-              :placeholder="locale === 'zh' ? '推理依据（指标、日志、变更线索）' : 'Reasoning evidence (metrics, logs, changes)'" />
-            <div class="hypothesis-create-row">
-              <el-select v-model="hypothesisDraft.status" size="small" class="hypothesis-select">
-                <el-option label="CANDIDATE" value="CANDIDATE" />
-                <el-option label="CONFIRMED" value="CONFIRMED" />
-                <el-option label="REJECTED" value="REJECTED" />
-              </el-select>
-              <el-input-number
-                v-model="hypothesisDraft.confidence"
-                size="small"
-                :min="0"
-                :max="1"
-                :step="0.05"
-                :precision="2"
-                class="hypothesis-confidence" />
-              <el-button size="small" type="primary" :loading="hypothesisSubmitting" @click="createHypothesis">
-                {{ locale === 'zh' ? '新增假设' : 'Add Hypothesis' }}
-              </el-button>
-            </div>
-          </div>
-
-          <div class="hypothesis-list">
-            <div v-for="item in hypotheses" :key="item.id" class="hypothesis-item">
-              <div class="hypothesis-item-head">
-                <p class="hypothesis-title">#{{ item.rankOrder }} · {{ item.title }}</p>
-                <div class="action-tags">
-                  <span class="inv-chip">{{ item.status || 'CANDIDATE' }}</span>
-                  <span class="inv-chip">C={{ typeof item.confidence === 'number' ? item.confidence.toFixed(2) : '-' }}</span>
-                </div>
-              </div>
-              <p v-if="item.reasoning" class="hypothesis-reasoning">{{ item.reasoning }}</p>
-            </div>
-            <div v-if="!hypotheses.length" class="ai-empty inline">
-              <p>{{ locale === 'zh' ? '暂无根因假设' : 'No hypotheses yet' }}</p>
-            </div>
-          </div>
-
-          <div class="action-head">
-            <span>{{ locale === 'zh' ? '动作计划' : 'Action Plans' }}</span>
-            <span>{{ actionPlans.length }}</span>
-          </div>
-
-          <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="action-create">
-            <el-input
-              v-model="actionDraft.title"
-              size="small"
-              :placeholder="locale === 'zh' ? '动作标题，例如：回收高内存进程' : 'Action title, e.g. recycle high-memory process'" />
-            <el-input
-              v-model="actionDraft.commandText"
-              type="textarea"
-              :rows="2"
-              resize="none"
-              :placeholder="locale === 'zh' ? '执行命令或 runbook 描述' : 'Command or runbook notes'" />
-            <div class="action-create-row">
-              <el-select v-model="actionDraft.riskLevel" size="small" class="action-select">
-                <el-option label="LOW" value="LOW" />
-                <el-option label="MEDIUM" value="MEDIUM" />
-                <el-option label="HIGH" value="HIGH" />
-              </el-select>
-              <el-switch
-                v-model="actionDraft.requiresApproval"
-                :active-text="locale === 'zh' ? '需审批' : 'Approval'"
-                :inactive-text="locale === 'zh' ? '免审批' : 'No approval'" />
-              <el-button size="small" type="primary" :loading="actionSubmitting" @click="createActionPlan">
-                {{ locale === 'zh' ? '新增动作' : 'Add Action' }}
-              </el-button>
-            </div>
-          </div>
-
-          <div class="action-list">
-            <div v-for="action in actionPlans" :key="action.id" class="action-item">
-              <div class="action-item-head">
-                <p class="action-title">{{ action.title }}</p>
-                <div class="action-tags">
-                  <span class="inv-chip">{{ action.actionType }}</span>
-                  <span class="inv-chip" :class="`risk-${(action.riskLevel || '').toLowerCase()}`">{{ action.riskLevel || 'MEDIUM' }}</span>
-                  <span class="inv-chip">{{ action.status }}</span>
-                </div>
-              </div>
-              <p v-if="action.commandText" class="action-command">{{ action.commandText }}</p>
-              <div class="action-buttons">
-                <el-button
+                :placeholder="locale === 'zh' ? '来源引用（日志ID、链路ID、任务ID）' : 'Source ref (log ID, trace ID, job ID)'" />
+              <div class="observation-create-row">
+                <el-input-number
+                  v-model="observationDraft.confidence"
                   size="small"
-                  plain
-                  :disabled="action.status === 'APPROVED' || action.status === 'EXECUTED' || action.status === 'FAILED' || !action.requiresApproval"
-                  :loading="actionOperatingId === action.id && actionOperatingType === 'approve'"
-                  @click="approveAction(action)">
-                  {{ locale === 'zh' ? '审批' : 'Approve' }}
-                </el-button>
-                <el-button
-                  size="small"
-                  type="success"
-                  plain
-                  :disabled="action.status === 'EXECUTED' || (action.requiresApproval && action.status !== 'APPROVED' && action.status !== 'FAILED')"
-                  :loading="actionOperatingId === action.id && actionOperatingType === 'execute'"
-                  @click="executeAction(action)">
-                  {{ locale === 'zh' ? '执行' : 'Execute' }}
-                </el-button>
-                <el-button
-                  size="small"
-                  type="warning"
-                  plain
-                  :disabled="action.status !== 'FAILED'"
-                  :loading="actionOperatingId === action.id && actionOperatingType === 'retry'"
-                  @click="retryAction(action)">
-                  {{ locale === 'zh' ? '重试' : 'Retry' }}
+                  :min="0"
+                  :max="1"
+                  :step="0.05"
+                  :precision="2"
+                  class="observation-confidence" />
+                <el-button size="small" type="primary" :loading="observationSubmitting" @click="createObservation">
+                  {{ locale === 'zh' ? '新增证据' : 'Add Observation' }}
                 </el-button>
               </div>
             </div>
-            <div v-if="!actionPlans.length" class="ai-empty inline">
-              <p>{{ locale === 'zh' ? '暂无动作计划' : 'No action plans' }}</p>
+
+            <div class="observation-list">
+              <div v-for="item in observations" :key="item.id" class="observation-item">
+                <div class="observation-item-head">
+                  <p class="observation-title">{{ item.type }} · {{ item.metricName || item.sourceRef || 'N/A' }}</p>
+                  <div class="action-tags">
+                    <span class="inv-chip">V={{ item.metricValue ?? '-' }}</span>
+                    <span class="inv-chip">C={{ typeof item.confidence === 'number' ? item.confidence.toFixed(2) : '-' }}</span>
+                  </div>
+                </div>
+                <p class="observation-meta">
+                  {{ formatDateTime(item.observedAt || item.createdAt) }} · {{ item.hostname || 'unknown-host' }}
+                </p>
+              </div>
+              <div v-if="!observations.length" class="ai-empty inline">
+                <p>{{ locale === 'zh' ? '暂无证据观测' : 'No observations yet' }}</p>
+              </div>
             </div>
           </div>
 
-          <div class="execution-head">
-            <span>{{ locale === 'zh' ? '执行记录' : 'Execution Runs' }}</span>
-            <span>{{ actionRuns.length }}</span>
+          <div v-else-if="detailTab === 'hypothesis'" class="process-body">
+            <div class="section-title-row">
+              <p class="section-title">{{ locale === 'zh' ? '根因假设' : 'Hypotheses' }}</p>
+              <span class="section-count">{{ hypotheses.length }}</span>
+            </div>
+
+            <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="hypothesis-create">
+              <el-input
+                v-model="hypothesisDraft.title"
+                size="small"
+                :placeholder="locale === 'zh' ? '假设标题，例如：JVM 堆外内存泄漏' : 'Hypothesis title, e.g. JVM off-heap memory leak'" />
+              <el-input
+                v-model="hypothesisDraft.reasoning"
+                type="textarea"
+                :rows="2"
+                resize="none"
+                :placeholder="locale === 'zh' ? '推理依据（指标、日志、变更线索）' : 'Reasoning evidence (metrics, logs, changes)'" />
+              <div class="hypothesis-create-row">
+                <el-select v-model="hypothesisDraft.status" size="small" class="hypothesis-select">
+                  <el-option label="CANDIDATE" value="CANDIDATE" />
+                  <el-option label="CONFIRMED" value="CONFIRMED" />
+                  <el-option label="REJECTED" value="REJECTED" />
+                </el-select>
+                <el-input-number
+                  v-model="hypothesisDraft.confidence"
+                  size="small"
+                  :min="0"
+                  :max="1"
+                  :step="0.05"
+                  :precision="2"
+                  class="hypothesis-confidence" />
+                <el-button size="small" type="primary" :loading="hypothesisSubmitting" @click="createHypothesis">
+                  {{ locale === 'zh' ? '新增假设' : 'Add Hypothesis' }}
+                </el-button>
+              </div>
+            </div>
+
+            <div class="hypothesis-list">
+              <div v-for="item in hypotheses" :key="item.id" class="hypothesis-item">
+                <div class="hypothesis-item-head">
+                  <p class="hypothesis-title">#{{ item.rankOrder }} · {{ item.title }}</p>
+                  <div class="action-tags">
+                    <span class="inv-chip">{{ item.status || 'CANDIDATE' }}</span>
+                    <span class="inv-chip">C={{ typeof item.confidence === 'number' ? item.confidence.toFixed(2) : '-' }}</span>
+                  </div>
+                </div>
+                <p v-if="item.reasoning" class="hypothesis-reasoning">{{ item.reasoning }}</p>
+              </div>
+              <div v-if="!hypotheses.length" class="ai-empty inline">
+                <p>{{ locale === 'zh' ? '暂无根因假设' : 'No hypotheses yet' }}</p>
+              </div>
+            </div>
           </div>
 
-          <div class="execution-list">
-            <div v-for="run in actionRuns" :key="run.id" class="execution-item">
-              <div class="execution-item-head">
-                <p class="execution-title">#{{ run.id }} · {{ run.status || '-' }}</p>
-                <div class="action-tags">
-                  <span class="inv-chip">{{ run.executionMode || 'MANUAL' }}</span>
-                  <span class="inv-chip">{{ run.executor || '-' }}</span>
+          <div v-else-if="detailTab === 'action'" class="process-body">
+            <div class="section-title-row">
+              <p class="section-title">{{ locale === 'zh' ? '动作计划' : 'Action Plans' }}</p>
+              <span class="section-count">{{ actionPlans.length }}</span>
+            </div>
+
+            <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="action-create">
+              <el-input
+                v-model="actionDraft.title"
+                size="small"
+                :placeholder="locale === 'zh' ? '动作标题，例如：回收高内存进程' : 'Action title, e.g. recycle high-memory process'" />
+              <el-input
+                v-model="actionDraft.commandText"
+                type="textarea"
+                :rows="2"
+                resize="none"
+                :placeholder="locale === 'zh' ? '执行命令或 runbook 描述' : 'Command or runbook notes'" />
+              <div class="action-create-row">
+                <el-select v-model="actionDraft.riskLevel" size="small" class="action-select">
+                  <el-option label="LOW" value="LOW" />
+                  <el-option label="MEDIUM" value="MEDIUM" />
+                  <el-option label="HIGH" value="HIGH" />
+                </el-select>
+                <el-switch
+                  v-model="actionDraft.requiresApproval"
+                  :active-text="locale === 'zh' ? '需审批' : 'Approval'"
+                  :inactive-text="locale === 'zh' ? '免审批' : 'No approval'" />
+                <el-button size="small" type="primary" :loading="actionSubmitting" @click="createActionPlan">
+                  {{ locale === 'zh' ? '新增动作' : 'Add Action' }}
+                </el-button>
+              </div>
+            </div>
+
+            <div class="action-list">
+              <div v-for="action in actionPlans" :key="action.id" class="action-item">
+                <div class="action-item-head">
+                  <p class="action-title">{{ action.title }}</p>
+                  <div class="action-tags">
+                    <span class="inv-chip">{{ action.actionType }}</span>
+                    <span class="inv-chip" :class="`risk-${(action.riskLevel || '').toLowerCase()}`">{{ action.riskLevel || 'MEDIUM' }}</span>
+                    <span class="inv-chip">{{ action.status }}</span>
+                  </div>
+                </div>
+                <p v-if="action.commandText" class="action-command">{{ action.commandText }}</p>
+                <div class="action-buttons">
+                  <el-button
+                    size="small"
+                    plain
+                    :disabled="action.status === 'APPROVED' || action.status === 'EXECUTED' || action.status === 'FAILED' || !action.requiresApproval"
+                    :loading="actionOperatingId === action.id && actionOperatingType === 'approve'"
+                    @click="approveAction(action)">
+                    {{ locale === 'zh' ? '审批' : 'Approve' }}
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="success"
+                    plain
+                    :disabled="action.status === 'EXECUTED' || (action.requiresApproval && action.status !== 'APPROVED' && action.status !== 'FAILED')"
+                    :loading="actionOperatingId === action.id && actionOperatingType === 'execute'"
+                    @click="executeAction(action)">
+                    {{ locale === 'zh' ? '执行' : 'Execute' }}
+                  </el-button>
+                  <el-button
+                    size="small"
+                    type="warning"
+                    plain
+                    :disabled="action.status !== 'FAILED'"
+                    :loading="actionOperatingId === action.id && actionOperatingType === 'retry'"
+                    @click="retryAction(action)">
+                    {{ locale === 'zh' ? '重试' : 'Retry' }}
+                  </el-button>
                 </div>
               </div>
-              <p class="execution-time">
-                {{ formatDateTime(run.startedAt || run.createdAt) }} → {{ formatDateTime(run.endedAt || run.createdAt) }}
-              </p>
-              <p v-if="run.outputText" class="execution-output">{{ run.outputText }}</p>
-              <p v-if="run.errorMessage" class="execution-error">{{ run.errorMessage }}</p>
-            </div>
-            <div v-if="!actionRuns.length" class="ai-empty inline">
-              <p>{{ locale === 'zh' ? '暂无执行记录' : 'No execution runs' }}</p>
+              <div v-if="!actionPlans.length" class="ai-empty inline">
+                <p>{{ locale === 'zh' ? '暂无动作计划' : 'No action plans' }}</p>
+              </div>
             </div>
           </div>
 
-          <div class="timeline-head">
-            <span>{{ locale === 'zh' ? '调查时间线' : 'Timeline' }}</span>
-            <div class="timeline-filter">
-              <el-select v-model="timelineCategory" size="small" class="timeline-select">
-                <el-option value="ALL" :label="locale === 'zh' ? '全部' : 'All'" />
-                <el-option value="INVESTIGATION" label="INVESTIGATION" />
-                <el-option value="OBSERVATION" label="OBSERVATION" />
-                <el-option value="HYPOTHESIS" label="HYPOTHESIS" />
-                <el-option value="ACTION_PLAN" label="ACTION_PLAN" />
-                <el-option value="ACTION_RUN" label="ACTION_RUN" />
-                <el-option value="REPORT_SNAPSHOT" label="REPORT_SNAPSHOT" />
-              </el-select>
-              <span>{{ filteredTimelineEvents.length }}</span>
+          <div v-else-if="detailTab === 'execution'" class="process-body">
+            <div class="section-title-row">
+              <p class="section-title">{{ locale === 'zh' ? '执行记录' : 'Execution Runs' }}</p>
+              <span class="section-count">{{ actionRuns.length }}</span>
+            </div>
+
+            <div class="execution-list">
+              <div v-for="run in actionRuns" :key="run.id" class="execution-item">
+                <div class="execution-item-head">
+                  <p class="execution-title">#{{ run.id }} · {{ run.status || '-' }}</p>
+                  <div class="action-tags">
+                    <span class="inv-chip">{{ run.executionMode || 'MANUAL' }}</span>
+                    <span class="inv-chip">{{ run.executor || '-' }}</span>
+                  </div>
+                </div>
+                <p class="execution-time">
+                  {{ formatDateTime(run.startedAt || run.createdAt) }} → {{ formatDateTime(run.endedAt || run.createdAt) }}
+                </p>
+                <p v-if="run.outputText" class="execution-output">{{ run.outputText }}</p>
+                <p v-if="run.errorMessage" class="execution-error">{{ run.errorMessage }}</p>
+              </div>
+              <div v-if="!actionRuns.length" class="ai-empty inline">
+                <p>{{ locale === 'zh' ? '暂无执行记录' : 'No execution runs' }}</p>
+              </div>
             </div>
           </div>
 
-          <div class="timeline-list">
-            <div v-for="event in filteredTimelineEvents" :key="`${event.category}-${event.refId}-${event.time}`" class="timeline-item">
-              <p class="timeline-time">{{ formatDateTime(event.time) }}</p>
-              <p class="timeline-title">{{ event.title }}</p>
-              <p class="timeline-detail">{{ event.detail }}</p>
-              <p v-if="formatTimelineMeta(event)" class="timeline-meta">{{ formatTimelineMeta(event) }}</p>
+          <div v-else-if="detailTab === 'timeline'" class="process-body">
+            <div class="timeline-head">
+              <span>{{ locale === 'zh' ? '调查时间线' : 'Timeline' }}</span>
+              <div class="timeline-filter">
+                <el-select v-model="timelineCategory" size="small" class="timeline-select">
+                  <el-option value="ALL" :label="locale === 'zh' ? '全部' : 'All'" />
+                  <el-option value="INVESTIGATION" label="INVESTIGATION" />
+                  <el-option value="OBSERVATION" label="OBSERVATION" />
+                  <el-option value="HYPOTHESIS" label="HYPOTHESIS" />
+                  <el-option value="ACTION_PLAN" label="ACTION_PLAN" />
+                  <el-option value="ACTION_RUN" label="ACTION_RUN" />
+                  <el-option value="REPORT_SNAPSHOT" label="REPORT_SNAPSHOT" />
+                </el-select>
+                <span>{{ filteredTimelineEvents.length }}</span>
+              </div>
             </div>
-            <div v-if="!filteredTimelineEvents.length && !loadingDetail" class="ai-empty inline">
-              <p>{{ locale === 'zh' ? '暂无时间线事件' : 'No timeline events' }}</p>
+
+            <div class="timeline-list">
+              <div v-for="event in filteredTimelineEvents" :key="`${event.category}-${event.refId}-${event.time}`" class="timeline-item">
+                <p class="timeline-time">{{ formatDateTime(event.time) }}</p>
+                <p class="timeline-title">{{ event.title }}</p>
+                <p class="timeline-detail">{{ event.detail }}</p>
+                <p v-if="formatTimelineMeta(event)" class="timeline-meta">{{ formatTimelineMeta(event) }}</p>
+              </div>
+              <div v-if="!filteredTimelineEvents.length && !loadingDetail" class="ai-empty inline">
+                <p>{{ locale === 'zh' ? '暂无时间线事件' : 'No timeline events' }}</p>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="process-body">
+            <div class="ai-empty inline">
+              <p>{{ locale === 'zh' ? '请选择流程标签' : 'Select a workflow tab' }}</p>
             </div>
           </div>
         </div>
-
         <div v-else class="ai-empty">
           <p>{{ loadingDetail ? (locale === 'zh' ? '加载调查详情...' : 'Loading investigation...') : (locale === 'zh' ? '请选择调查对象' : 'Select an investigation') }}</p>
         </div>
-      </div>
+      </section>
     </div>
 
     <div v-else class="ai-report-list">
@@ -411,7 +483,6 @@
           <div class="ai-report-content prose" v-html="report.html"></div>
         </div>
       </transition-group>
-
       <div v-if="reports.length === 0" class="ai-empty">
         <p>{{ locale === 'zh' ? '等待 AI 诊断结果...' : 'Waiting for AI diagnostics...' }}</p>
       </div>
@@ -449,6 +520,7 @@ const auth = useAuthStore()
 const { locale } = useLocaleMode()
 
 const activeTab = ref('investigations')
+const detailTab = ref('overview')
 const reports = ref([])
 const wsConnected = ref(false)
 
@@ -503,11 +575,42 @@ const selectedSnapshotHtml = computed(() => {
   const markdown = selectedDetail.value?.latestSnapshot?.reportMarkdown
   return markdown ? marked.parse(markdown) : ''
 })
+const currentDetailTabHint = computed(() => {
+  const zhMap = {
+    overview: '总览：先确认 AI 结论与当前状态，再决定是否进入复盘或人工编辑。',
+    evidence: '证据：补充可验证的监控/日志/事件，构建后续推理基础。',
+    hypothesis: '假设：基于证据归纳根因候选，并逐步确认或排除。',
+    action: '动作：形成可执行的处置计划，审批后执行并记录结果。',
+    execution: '执行：查看执行结果、输出与错误，判断动作是否生效。',
+    timeline: '时间线：回看调查全过程，用于复盘与审计。'
+  }
+  const enMap = {
+    overview: 'Overview: validate AI conclusions and current state before deeper operations.',
+    evidence: 'Evidence: add verifiable metrics/logs/events as the basis for reasoning.',
+    hypothesis: 'Hypothesis: derive and validate root-cause candidates from evidence.',
+    action: 'Actions: create executable plans, approve, execute, and track outcomes.',
+    execution: 'Execution: inspect outputs and errors to verify action effectiveness.',
+    timeline: 'Timeline: review the full investigation path for postmortem and audit.'
+  }
+  const map = locale.value === 'zh' ? zhMap : enMap
+  return map[detailTab.value] || map.overview
+})
 
 const observations = computed(() => selectedDetail.value?.observations || [])
 const hypotheses = computed(() => selectedDetail.value?.hypotheses || [])
 const actionPlans = computed(() => selectedDetail.value?.actionPlans || [])
 const actionRuns = computed(() => selectedDetail.value?.actionRuns || [])
+const detailTabs = computed(() => {
+  const zh = locale.value === 'zh'
+  return [
+    { key: 'overview', label: zh ? '总览' : 'Overview', count: null },
+    { key: 'evidence', label: zh ? '证据' : 'Evidence', count: observations.value.length },
+    { key: 'hypothesis', label: zh ? '假设' : 'Hypothesis', count: hypotheses.value.length },
+    { key: 'action', label: zh ? '动作' : 'Actions', count: actionPlans.value.length },
+    { key: 'execution', label: zh ? '执行' : 'Execution', count: actionRuns.value.length },
+    { key: 'timeline', label: zh ? '时间线' : 'Timeline', count: timelineEvents.value.length }
+  ]
+})
 const filteredTimelineEvents = computed(() => {
   if (timelineCategory.value === 'ALL') return timelineEvents.value
   return timelineEvents.value.filter((x) => x?.category === timelineCategory.value)
@@ -613,6 +716,7 @@ async function refreshInvestigations(silent = true) {
     investigations.value = data?.content || []
 
     if (!investigations.value.length) {
+      detailTab.value = 'overview'
       selectedInvestigationId.value = null
       selectedDetail.value = null
       timelineEvents.value = []
@@ -640,6 +744,7 @@ async function refreshInvestigations(silent = true) {
 
 async function selectInvestigation(id) {
   selectedInvestigationId.value = id
+  detailTab.value = 'overview'
   await loadInvestigationDetail(id, false)
   await loadInvestigationTimeline(id, false)
 }
@@ -947,22 +1052,25 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 18px 16px 20px;
+  gap: 14px;
+  padding: 18px 16px 18px;
   border-left: 1px solid var(--line);
   background: linear-gradient(180deg, var(--panel-strong), var(--panel));
+  min-height: 0;
+  min-width: 0;
+  container-type: inline-size;
 }
 
 .ai-expert-head {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 1fr auto;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
 .ai-expert-head h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.2;
 }
 
@@ -989,13 +1097,20 @@ onUnmounted(() => {
 }
 
 .ai-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: var(--panel-soft);
-  padding: 10px 12px;
+  padding: 10px 12px 9px;
   color: var(--text-3);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.ai-note strong {
+  color: var(--text-1);
 }
 
 .ai-toolbar {
@@ -1028,12 +1143,66 @@ onUnmounted(() => {
   color: #67e8f9;
 }
 
-.investigation-view {
+.investigation-workbench {
   flex: 1;
   min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(200px, 24%) minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
+}
+
+.workbench-left,
+.workbench-main {
+  min-height: 0;
+  min-width: 0;
+}
+
+.workbench-main {
+  overflow: hidden;
+}
+
+.workbench-left {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.side-section {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.side-section.flex-grow {
+  flex: 1;
+}
+
+.side-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.side-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.side-count {
+  font-size: 11px;
+  color: var(--text-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
 }
 
 .quality-grid {
@@ -1046,7 +1215,7 @@ onUnmounted(() => {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel-soft);
-  padding: 8px 10px;
+  padding: 9px 10px;
 }
 
 .quality-label {
@@ -1063,10 +1232,11 @@ onUnmounted(() => {
 }
 
 .investigation-list {
-  display: grid;
-  grid-template-columns: 1fr;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  max-height: 160px;
   overflow: auto;
   padding-right: 4px;
 }
@@ -1112,40 +1282,37 @@ onUnmounted(() => {
   color: #fbbf24;
 }
 
-.investigation-detail {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-}
-
 .detail-card {
-  width: 100%;
+  height: 100%;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--panel);
-  padding: 12px;
+  padding: 12px 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   min-height: 0;
 }
 
-.detail-head {
+.case-header {
   display: flex;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .detail-head-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .detail-title {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-1);
+  font-weight: 700;
 }
 
 .detail-sub {
@@ -1158,12 +1325,121 @@ onUnmounted(() => {
   color: #67e8f9;
 }
 
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.overview-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 8px 10px;
+}
+
+.overview-label {
+  margin: 0;
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.overview-value {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-1);
+  font-weight: 700;
+}
+
+.process-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.process-tab {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-3);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.process-tab-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.process-tab-count {
+  font-size: 10px;
+  color: var(--text-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.process-tab.active {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.14);
+  color: #93c5fd;
+}
+
+.process-tab.active .process-tab-count {
+  color: #bfdbfe;
+  border-color: rgba(147, 197, 253, 0.45);
+}
+
+.process-hint {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.process-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.section-count {
+  font-size: 11px;
+  color: var(--text-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
 .report-snapshot {
+  flex: 1;
+  min-height: 0;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel-soft);
   padding: 10px;
-  max-height: 170px;
   overflow: auto;
 }
 
@@ -1175,7 +1451,7 @@ onUnmounted(() => {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel-soft);
-  padding: 8px;
+  padding: 9px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1183,22 +1459,17 @@ onUnmounted(() => {
 
 .snapshot-editor-row {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
-}
-
-.observation-head {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-3);
 }
 
 .observation-create {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel-soft);
-  padding: 8px;
+  padding: 9px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1220,10 +1491,11 @@ onUnmounted(() => {
 }
 
 .observation-list {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 170px;
   overflow: auto;
   padding-right: 2px;
 }
@@ -1256,18 +1528,11 @@ onUnmounted(() => {
   color: var(--text-3);
 }
 
-.hypothesis-head {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-3);
-}
-
 .hypothesis-create {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel-soft);
-  padding: 8px;
+  padding: 9px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1289,10 +1554,11 @@ onUnmounted(() => {
 }
 
 .hypothesis-list {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 170px;
   overflow: auto;
   padding-right: 2px;
 }
@@ -1326,18 +1592,11 @@ onUnmounted(() => {
   white-space: pre-wrap;
 }
 
-.action-head {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-3);
-}
-
 .action-create {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel-soft);
-  padding: 8px;
+  padding: 9px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1354,10 +1613,11 @@ onUnmounted(() => {
 }
 
 .action-list {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 190px;
   overflow: auto;
   padding-right: 2px;
 }
@@ -1414,21 +1674,16 @@ onUnmounted(() => {
 
 .action-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-}
-
-.execution-head {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-3);
 }
 
 .execution-list {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 170px;
   overflow: auto;
   padding-right: 2px;
 }
@@ -1549,6 +1804,7 @@ onUnmounted(() => {
   border: 1px solid var(--line);
   background: var(--panel);
   padding: 12px;
+  min-width: 0;
 }
 
 .ai-report-card.risk {
@@ -1579,6 +1835,19 @@ onUnmounted(() => {
   color: inherit;
 }
 
+/* Avoid long markdown/log lines pushing cards outside viewport */
+.ai-report-content {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ai-report-content :deep(pre),
+.ai-report-content :deep(code) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .ai-empty {
   flex: 1;
   display: flex;
@@ -1606,11 +1875,104 @@ onUnmounted(() => {
   opacity: 0;
 }
 
+@container (max-width: 1200px) {
+  .investigation-workbench {
+    grid-template-columns: minmax(190px, 30%) minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 980px) {
+  .investigation-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .workbench-left {
+    max-height: 260px;
+  }
+
+  .overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 500px) {
+  .process-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .process-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .process-tab {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .case-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .detail-head-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .observation-create-row {
+    flex-wrap: wrap;
+  }
+
+  .observation-type-select {
+    width: 100%;
+  }
+
+  .observation-number,
+  .observation-confidence {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
+
+  .hypothesis-create-row {
+    flex-wrap: wrap;
+  }
+
+  .hypothesis-select {
+    width: 100%;
+  }
+
+  .hypothesis-confidence {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
+
+  .action-create-row {
+    flex-wrap: wrap;
+  }
+
+  .action-select {
+    width: 100%;
+  }
+
+  .action-buttons {
+    gap: 6px;
+  }
+
+  .timeline-select {
+    width: 120px;
+  }
+}
+
 @media (max-width: 1280px) {
   .ai-expert-panel {
     border-left: none;
     border-top: 1px solid var(--line);
-    min-height: 420px;
+    min-height: 500px;
   }
 }
 </style>
