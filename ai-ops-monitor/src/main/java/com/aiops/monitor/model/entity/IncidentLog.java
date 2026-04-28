@@ -51,6 +51,33 @@ public class IncidentLog {
     @Column(name = "next_notify_at")
     private LocalDateTime nextNotifyAt;
 
+    @Column(name = "fingerprint")
+    private String fingerprint;
+
+    @Column(name = "occurrence_count")
+    private Integer occurrenceCount = 1;
+
+    @Column(name = "suppressed_count")
+    private Integer suppressedCount = 0;
+
+    @Column(name = "first_seen_at")
+    private LocalDateTime firstSeenAt;
+
+    @Column(name = "last_seen_at")
+    private LocalDateTime lastSeenAt;
+
+    @Column(name = "source_type", length = 30)
+    private String sourceType = "METRIC";
+
+    @Column(name = "source_ref")
+    private String sourceRef;
+
+    @Column(name = "service_name")
+    private String serviceName;
+
+    @Column(name = "trace_id")
+    private String traceId;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 }

@@ -19,6 +19,7 @@ import com.aiops.monitor.service.ThresholdConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -46,6 +47,12 @@ public class AgentIngestController {
     private final InvestigationOrchestrator investigationOrchestrator;
     private final Map<String, LocalDateTime> lastAlertAt = new ConcurrentHashMap<>();
     private final Map<String, Integer> breachCounter = new ConcurrentHashMap<>();
+
+    @Value("${monitor.threshold.net-rx:10485760}")
+    private double netRxThreshold;
+
+    @Value("${monitor.threshold.net-tx:10485760}")
+    private double netTxThreshold;
 
     @PostMapping("/register")
     public ResponseEntity<Map<String, Object>> register(@Valid @RequestBody AgentRegisterRequest request) {
@@ -118,6 +125,18 @@ public class AgentIngestController {
                 threshold.getConsecutiveBreachCount(),
                 threshold.getSilenceSeconds(),
                 escalationPolicy);
+        evaluateAndRecordIncident(target, "NET_RX",
+                request.getNetRxBytesPerSec(),
+                netRxThreshold,
+                threshold.getConsecutiveBreachCount(),
+                threshold.getSilenceSeconds(),
+                escalationPolicy);
+        evaluateAndRecordIncident(target, "NET_TX",
+                request.getNetTxBytesPerSec(),
+                netTxThreshold,
+                threshold.getConsecutiveBreachCount(),
+                threshold.getSilenceSeconds(),
+                escalationPolicy);
 
         return ResponseEntity.ok(Map.of(
                 "targetId", target.getId(),
@@ -181,14 +200,56 @@ public class AgentIngestController {
         LocalDateTime now = LocalDateTime.now();
         int effectiveSilenceSeconds = silenceSeconds == null || silenceSeconds < 1 ? 180 : silenceSeconds;
         LocalDateTime last = lastAlertAt.get(alertKey);
-        if (last != null && last.plusSeconds(effectiveSilenceSeconds).isAfter(now)) {
+        String severity = calculateSeverity(value, threshold);
+        Integer firstIntervalMinutes = escalationPolicyService.getIntervalMinutes(escalationPolicy, severity, 0);
+        boolean inSilenceWindow = last != null && last.plusSeconds(effectiveSilenceSeconds).isAfter(now);
+
+        IncidentLog existing = incidentLogRepository
+                .findFirstByUserIdAndTargetIdAndMetricNameAndStatusInOrderByCreatedAtDesc(
+                        target.getUserId(),
+                        target.getId(),
+                        metricName,
+                        java.util.List.of("OPEN", "ACKNOWLEDGED")
+                ).orElse(null);
+
+        if (existing != null) {
+            existing.setMetricValue(value);
+            existing.setThreshold(threshold);
+            existing.setSeverity(severity);
+            existing.setMessage(String.format("[%s] %s(%s) %s 连续%d次超阈值: %.2f > %.2f",
+                    severity,
+                    target.getName(),
+                    target.getHostname() == null ? "unknown" : target.getHostname(),
+                    metricName,
+                    requiredCount,
+                    value,
+                    threshold));
+            existing.setLastSeenAt(now);
+            if (existing.getFirstSeenAt() == null) {
+                existing.setFirstSeenAt(existing.getCreatedAt() == null ? now : existing.getCreatedAt());
+            }
+            existing.setOccurrenceCount((existing.getOccurrenceCount() == null ? 1 : existing.getOccurrenceCount()) + 1);
+            if (inSilenceWindow) {
+                existing.setSuppressedCount((existing.getSuppressedCount() == null ? 0 : existing.getSuppressedCount()) + 1);
+            }
+            incidentLogRepository.save(existing);
+
+            breachCounter.put(alertKey, 0);
+            if (!inSilenceWindow) {
+                lastAlertAt.put(alertKey, now);
+                existing.setLastNotifiedAt(now);
+                existing.setNextNotifyAt(firstIntervalMinutes == null ? null : now.plusMinutes(firstIntervalMinutes));
+                incidentLogRepository.save(existing);
+            }
+            return;
+        }
+
+        if (inSilenceWindow) {
             return;
         }
 
         breachCounter.put(alertKey, 0);
         lastAlertAt.put(alertKey, now);
-        String severity = calculateSeverity(value, threshold);
-        Integer firstIntervalMinutes = escalationPolicyService.getIntervalMinutes(escalationPolicy, severity, 0);
 
         IncidentLog incidentEntity = new IncidentLog();
         incidentEntity.setMetricName(metricName);
@@ -210,6 +271,14 @@ public class AgentIngestController {
         incidentEntity.setEscalationLevel(0);
         incidentEntity.setLastNotifiedAt(now);
         incidentEntity.setNextNotifyAt(firstIntervalMinutes == null ? null : now.plusMinutes(firstIntervalMinutes));
+        incidentEntity.setFingerprint(buildFingerprint(target, metricName));
+        incidentEntity.setOccurrenceCount(1);
+        incidentEntity.setSuppressedCount(0);
+        incidentEntity.setFirstSeenAt(now);
+        incidentEntity.setLastSeenAt(now);
+        incidentEntity.setSourceType("METRIC");
+        incidentEntity.setSourceRef("target:" + target.getId());
+        incidentEntity.setServiceName(target.getName());
         incidentEntity.setCreatedAt(now);
         IncidentLog saved = incidentLogRepository.save(incidentEntity);
         notificationDispatcherService.dispatchIncidentOpened(saved);
@@ -232,5 +301,11 @@ public class AgentIngestController {
             return "P2";
         }
         return "P3";
+    }
+
+    private String buildFingerprint(MonitorTarget target, String metricName) {
+        Long targetId = target.getId() == null ? 0L : target.getId();
+        String host = target.getHostname() == null ? "unknown-host" : target.getHostname();
+        return targetId + "|" + host + "|" + metricName;
     }
 }

@@ -29,7 +29,7 @@ public interface IncidentLogRepository extends JpaRepository<IncidentLog, Long> 
               AND (:metricName IS NULL OR i.metricName = :metricName)
               AND (:hostname IS NULL OR i.hostname LIKE CONCAT('%', :hostname, '%'))
               AND (:keyword IS NULL OR i.message LIKE CONCAT('%', :keyword, '%'))
-            ORDER BY i.createdAt DESC
+            ORDER BY COALESCE(i.lastSeenAt, i.createdAt) DESC
             """)
     Page<IncidentLog> searchByUserId(@Param("userId") Long userId,
                                      @Param("status") String status,
@@ -37,6 +37,31 @@ public interface IncidentLogRepository extends JpaRepository<IncidentLog, Long> 
                                      @Param("hostname") String hostname,
                                      @Param("keyword") String keyword,
                                      Pageable pageable);
+
+    Optional<IncidentLog> findFirstByUserIdAndTargetIdAndMetricNameAndStatusInOrderByCreatedAtDesc(
+            Long userId,
+            Long targetId,
+            String metricName,
+            List<String> statuses
+    );
+
+    @Query("""
+            SELECT COALESCE(SUM(COALESCE(i.occurrenceCount, 1)), 0)
+            FROM IncidentLog i
+            WHERE i.userId = :userId
+              AND i.createdAt >= :start
+            """)
+    long sumOccurrenceByUserIdAndCreatedAtAfter(@Param("userId") Long userId,
+                                                @Param("start") LocalDateTime start);
+
+    @Query("""
+            SELECT COALESCE(SUM(COALESCE(i.suppressedCount, 0)), 0)
+            FROM IncidentLog i
+            WHERE i.userId = :userId
+              AND i.createdAt >= :start
+            """)
+    long sumSuppressedByUserIdAndCreatedAtAfter(@Param("userId") Long userId,
+                                                @Param("start") LocalDateTime start);
 
     @Query("""
             SELECT i FROM IncidentLog i
