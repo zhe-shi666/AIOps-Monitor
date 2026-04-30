@@ -113,6 +113,9 @@ import { WS_BASE_URL } from '../config/env'
 import { useLocaleMode } from '../composables/useLocaleMode'
 
 const SUPPORTED_METRICS = ['CPU', 'MEMORY', 'DISK', 'NET_RX', 'NET_TX', 'PROCESS_COUNT']
+const CHART_WINDOW_MS = 5 * 60 * 1000
+const NODE_STALE_MS = 20 * 1000
+const NODE_REMOVE_MS = 90 * 1000
 
 const METRIC_META = {
   CPU: { labelZh: 'CPU 使用率', labelEn: 'CPU Usage', unit: '%', normalHigh: 80 },
@@ -139,7 +142,7 @@ const chartRef = ref(null)
 let myChart = null
 let chartRuntime = null
 const metricSeries = reactive({})
-const metricLabels = reactive({})
+const nodeLastSeen = reactive({})
 
 const hardwareInfo = ref({
   cpuModel: '-',
@@ -148,7 +151,6 @@ const hardwareInfo = ref({
 
 for (const metric of SUPPORTED_METRICS) {
   metricSeries[metric] = {}
-  metricLabels[metric] = []
 }
 
 const metricOptions = computed(() => SUPPORTED_METRICS.map((key) => ({
@@ -163,7 +165,6 @@ const selectedMetricLabel = computed(() =>
 const selectedMetricUnit = computed(() => selectedMetricMeta.value.unit)
 
 const activeNodesData = computed(() => metricSeries[selectedMetric.value] || {})
-const activeLabels = computed(() => metricLabels[selectedMetric.value] || [])
 
 const nodeCount = computed(() => Object.keys(activeNodesData.value).length)
 const totalDataPoints = computed(() =>
@@ -203,6 +204,11 @@ const getNodeColor = (hostname) => {
   const colors = ['#22d3ee', '#a855f7', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6']
   const index = hostname.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % colors.length
   return colors[index]
+}
+
+const isNodeStale = (hostname) => {
+  const lastSeen = nodeLastSeen[hostname]
+  return !lastSeen || Date.now() - lastSeen > NODE_STALE_MS
 }
 
 const loadChartRuntime = async () => {
@@ -306,24 +312,37 @@ const getYAxisOption = () => {
 
 const getChartOption = () => {
   const nodes = activeNodesData.value
-  const labels = activeLabels.value
   const linearGradient = chartRuntime?.graphic?.LinearGradient
-  const series = Object.keys(nodes).map((hostname) => ({
-    name: hostname,
-    type: 'line',
-    smooth: true,
-    showSymbol: false,
-    lineStyle: { width: 3, color: getNodeColor(hostname), shadowColor: getNodeColor(hostname), shadowBlur: 10 },
-    areaStyle: {
-      color: linearGradient
-        ? new linearGradient(0, 0, 0, 1, [
-          { offset: 0, color: getNodeColor(hostname) + '4d' },
-          { offset: 1, color: getNodeColor(hostname) + '00' }
-        ])
-        : getNodeColor(hostname) + '22'
-    },
-    data: nodes[hostname] || []
-  }))
+  const now = Date.now()
+  const series = Object.keys(nodes).map((hostname) => {
+    const stale = isNodeStale(hostname)
+    const color = getNodeColor(hostname)
+    return {
+      name: stale ? `${hostname} (offline)` : hostname,
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      connectNulls: false,
+      lineStyle: {
+        width: stale ? 2 : 3,
+        type: stale ? 'dashed' : 'solid',
+        opacity: stale ? 0.38 : 1,
+        color,
+        shadowColor: stale ? 'transparent' : color,
+        shadowBlur: stale ? 0 : 10
+      },
+      areaStyle: {
+        opacity: stale ? 0.08 : 1,
+        color: linearGradient
+          ? new linearGradient(0, 0, 0, 1, [
+            { offset: 0, color: color + (stale ? '18' : '4d') },
+            { offset: 1, color: color + '00' }
+          ])
+          : color + (stale ? '12' : '22')
+      },
+      data: nodes[hostname] || []
+    }
+  })
 
   return {
     backgroundColor: 'transparent',
@@ -335,19 +354,19 @@ const getChartOption = () => {
       textStyle: { color: '#fff' },
       formatter: (params) => {
         if (!params || !params.length) return ''
-        const title = params[0].axisValue
-        const lines = params.map((p) => `${p.marker} ${p.seriesName}: ${formatMetricValue(Number(p.value || 0), selectedMetric.value)}`)
+        const title = new Date(params[0].value[0]).toLocaleTimeString(locale.value === 'zh' ? 'zh-CN' : 'en-US', { hour12: false })
+        const lines = params.map((p) => `${p.marker} ${p.seriesName}: ${formatMetricValue(Number(p.value?.[1] || 0), selectedMetric.value)}`)
         return [title, ...lines].join('<br/>')
       }
     },
-    legend: { data: Object.keys(nodes), textStyle: { color: '#94a3b8' }, right: '10%', top: '5%' },
+    legend: { textStyle: { color: '#94a3b8' }, right: '10%', top: '5%' },
     grid: { top: '15%', left: '5%', right: '5%', bottom: '10%', containLabel: true },
     xAxis: {
-      type: 'category',
-      boundaryGap: false,
-      data: labels,
+      type: 'time',
+      min: now - CHART_WINDOW_MS,
+      max: now,
       axisLine: { lineStyle: { color: '#334155' } },
-      axisLabel: { color: '#64748b' },
+      axisLabel: { color: '#64748b', formatter: (value) => new Date(value).toLocaleTimeString(locale.value === 'zh' ? 'zh-CN' : 'en-US', { hour12: false }) },
       splitLine: { show: false }
     },
     yAxis: getYAxisOption(),
@@ -379,20 +398,20 @@ const updateChartData = (metric) => {
   const value = Number(source?.value)
   if (Number.isNaN(value)) return
 
-  const labels = metricLabels[metricName]
   const nodes = metricSeries[metricName]
 
   if (!nodes[hostname]) nodes[hostname] = []
-  nodes[hostname].push(value)
+  const pointTime = Number(source?.timestamp || Date.now())
+  nodes[hostname].push([pointTime, value])
+  nodeLastSeen[hostname] = pointTime
 
-  const now = new Date().toLocaleTimeString().replace(/^\D*/, '')
-  const maxLength = Math.max(...Object.values(nodes).map((d) => d.length), 0)
-  while (labels.length < maxLength) labels.push(now)
-
+  const cutoff = Date.now() - CHART_WINDOW_MS
   Object.keys(nodes).forEach((h) => {
-    if (nodes[h].length > 60) nodes[h].shift()
+    nodes[h] = nodes[h].filter(([time]) => time >= cutoff)
+    if (Date.now() - (nodeLastSeen[h] || 0) > NODE_REMOVE_MS) {
+      delete nodes[h]
+    }
   })
-  while (labels.length > 60) labels.shift()
 
   if (myChart && metricName === selectedMetric.value) {
     myChart.setOption(getChartOption(), true)
@@ -427,15 +446,6 @@ const initWebSocket = () => {
 const handleResize = () => { if (myChart) myChart.resize() }
 
 onMounted(async () => {
-  const now = new Date()
-  const initialLabels = []
-  for (let i = 59; i >= 0; i--) {
-    initialLabels.push(new Date(now - i * 1000).toLocaleTimeString().replace(/^\D*/, ''))
-  }
-  for (const metric of SUPPORTED_METRICS) {
-    metricLabels[metric] = [...initialLabels]
-  }
-
   await loadHardwareInfo()
   await initChart()
   nextTick(() => {

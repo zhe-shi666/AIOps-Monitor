@@ -117,5 +117,25 @@
 提示词工程：设计了结构化的 Prompt 模板，将复杂的时序数据转化为 AI 易理解的特征描述，显著提升诊断准确率。
 工程化规范：全链路采用 RESTful API 设计规范，结合 Docker Compose 实现基础设施的一键化部署。
 
+## 📦 Agent Lite（目标机器轻量接入）
+目标机器不需要部署完整项目，只需要运行轻量 agent 包：
+
+1. 打包：
+   `./tools/agent-lite/package-agent-lite.sh`
+2. 产物：
+   `dist/aiops-agent-lite.tar.gz`
+3. 在目标机器上解压并启动：
+   `./start.sh`
+
+详细说明见：
+`tools/agent-lite/README.md`
+
+## 企业交付文档
+
+本轮已补齐企业使用与交付说明：
+
+1. `docs/企业交付使用手册.md`：客户使用、Agent 接入、AI 专家、告警处理、演示脚本。
+2. `docs/当前企业级TODO收口.md`：当前 10 项企业级 TODO 的完成状态与后续增强边界。
+
 ## 📄 开源协议
 本项目遵循 MIT License 开源协议。

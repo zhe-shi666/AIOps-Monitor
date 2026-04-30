@@ -33,6 +33,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
@@ -55,6 +58,9 @@ public class InvestigationIntelligenceService {
     @Value("${spring.ai.ollama.chat.options.model:unknown}")
     private String modelName;
 
+    @Value("${monitor.ai.generate-timeout-seconds:35}")
+    private long aiGenerateTimeoutSeconds;
+
     @Transactional
     public Map<String, Object> generateAndPersist(Long investigationId,
                                                   Long userId,
@@ -65,7 +71,15 @@ public class InvestigationIntelligenceService {
         List<AiObservation> observations = aiObservationRepository
                 .findByInvestigationIdAndUserIdOrderByObservedAtAsc(investigationId, userId);
 
-        StructuredAnalysis analysis = runAnalysis(investigation, observations, promptHint);
+        StructuredAnalysis analysis;
+        boolean usedFallback = false;
+        try {
+            analysis = runAnalysis(investigation, observations, promptHint);
+        } catch (Exception ex) {
+            log.warn("structured analysis failed, use fallback: investigationId={}, reason={}", investigationId, ex.getMessage());
+            analysis = fallbackAnalysis(investigation, observations).withPrompt("fallback: " + nonBlank(promptHint, "no hint"));
+            usedFallback = true;
+        }
 
         investigation.setSummary(analysis.summary());
         investigation.setRootCause(analysis.rootCause());
@@ -168,7 +182,8 @@ public class InvestigationIntelligenceService {
                 Map.of(
                         "snapshotVersion", savedSnapshot.getVersionNo(),
                         "hypothesisCreated", createdHypothesis,
-                        "actionCreated", createdActions
+                        "actionCreated", createdActions,
+                        "usedFallback", usedFallback
                 )
         );
 
@@ -188,7 +203,19 @@ public class InvestigationIntelligenceService {
                                                        String operator,
                                                        String additionalContext) {
         AiInvestigation investigation = requireInvestigation(investigationId, userId);
-        String draft = buildPostmortemDraftWithAi(investigation, additionalContext);
+        String draft;
+        boolean usedFallback = false;
+        try {
+            draft = buildPostmortemDraftWithAi(investigation, additionalContext);
+        } catch (Exception ex) {
+            log.warn("postmortem generation failed, use fallback: investigationId={}, reason={}", investigationId, ex.getMessage());
+            draft = buildSimplePostmortem(
+                    nonBlank(investigation.getSummary(), "No summary"),
+                    nonBlank(investigation.getRootCause(), "Need further validation"),
+                    List.of()
+            );
+            usedFallback = true;
+        }
         AiReportSnapshot snapshot = createPostmortemSnapshot(
                 investigation,
                 userId,
@@ -202,7 +229,10 @@ public class InvestigationIntelligenceService {
                 "POSTMORTEM_DRAFT",
                 investigationId,
                 "Postmortem draft generated",
-                Map.of("snapshotVersion", snapshot.getVersionNo())
+                Map.of(
+                        "snapshotVersion", snapshot.getVersionNo(),
+                        "usedFallback", usedFallback
+                )
         );
 
         return Map.of(
@@ -226,17 +256,12 @@ public class InvestigationIntelligenceService {
                                            List<AiObservation> observations,
                                            String promptHint) {
         String prompt = buildStructuredPrompt(investigation, observations, promptHint);
-        long start = System.currentTimeMillis();
-        String raw;
-        try {
-            raw = aiService.analyzeData(prompt);
-        } catch (Exception ex) {
-            saveModelTrace(investigation.getUserId(), investigation.getId(), "STRUCTURED_ANALYSIS",
-                    prompt, null, System.currentTimeMillis() - start, "FAILED", ex.getMessage());
-            throw ex;
-        }
-        saveModelTrace(investigation.getUserId(), investigation.getId(), "STRUCTURED_ANALYSIS",
-                prompt, raw, System.currentTimeMillis() - start, "SUCCESS", null);
+        String raw = callAiWithTimeout(
+                investigation.getUserId(),
+                investigation.getId(),
+                "STRUCTURED_ANALYSIS",
+                prompt
+        );
         StructuredAnalysis parsed = parseStructuredAnalysis(raw);
         if (parsed != null) {
             return parsed.withPrompt(prompt);
@@ -487,17 +512,12 @@ public class InvestigationIntelligenceService {
                 nonBlank(additionalContext, "none")
         );
 
-        long start = System.currentTimeMillis();
-        String markdown;
-        try {
-            markdown = aiService.analyzeData(prompt);
-            saveModelTrace(investigation.getUserId(), investigation.getId(), "POSTMORTEM_DRAFT",
-                    prompt, markdown, System.currentTimeMillis() - start, "SUCCESS", null);
-        } catch (Exception ex) {
-            saveModelTrace(investigation.getUserId(), investigation.getId(), "POSTMORTEM_DRAFT",
-                    prompt, null, System.currentTimeMillis() - start, "FAILED", ex.getMessage());
-            throw ex;
-        }
+        String markdown = callAiWithTimeout(
+                investigation.getUserId(),
+                investigation.getId(),
+                "POSTMORTEM_DRAFT",
+                prompt
+        );
         if (markdown == null || markdown.isBlank()) {
             return buildSimplePostmortem(
                     nonBlank(investigation.getSummary(), "No summary"),
@@ -506,6 +526,47 @@ public class InvestigationIntelligenceService {
             );
         }
         return markdown;
+    }
+
+    private String callAiWithTimeout(Long userId,
+                                     Long investigationId,
+                                     String phase,
+                                     String prompt) {
+        long start = System.currentTimeMillis();
+        try {
+            String response = CompletableFuture
+                    .supplyAsync(() -> aiService.analyzeData(prompt))
+                    .orTimeout(aiGenerateTimeoutSeconds, TimeUnit.SECONDS)
+                    .join();
+            saveModelTrace(
+                    userId,
+                    investigationId,
+                    phase,
+                    prompt,
+                    response,
+                    System.currentTimeMillis() - start,
+                    "SUCCESS",
+                    null
+            );
+            return response;
+        } catch (CompletionException ex) {
+            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+            boolean timedOut = cause instanceof TimeoutException;
+            String message = timedOut
+                    ? "AI generation timeout after " + aiGenerateTimeoutSeconds + " seconds"
+                    : nonBlank(cause.getMessage(), "AI generation failed");
+            saveModelTrace(
+                    userId,
+                    investigationId,
+                    phase,
+                    prompt,
+                    null,
+                    System.currentTimeMillis() - start,
+                    timedOut ? "TIMEOUT" : "FAILED",
+                    message
+            );
+            throw new IllegalStateException(message, cause);
+        }
     }
 
     private AiReportSnapshot createPostmortemSnapshot(AiInvestigation investigation,

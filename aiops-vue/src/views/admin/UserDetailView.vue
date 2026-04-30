@@ -18,6 +18,8 @@
             <span class="text-slate-400">{{ t('role') }}：</span>
             <el-select v-model="user.role" size="small" @change="handleRoleChange" style="width: 120px;">
               <el-option label="USER" value="USER" />
+              <el-option label="AUDITOR" value="AUDITOR" />
+              <el-option label="OPS" value="OPS" />
               <el-option label="ADMIN" value="ADMIN" />
             </el-select>
           </div>

@@ -4,6 +4,7 @@ import com.aiops.monitor.model.entity.IncidentLog;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -73,4 +74,8 @@ public interface IncidentLogRepository extends JpaRepository<IncidentLog, Long> 
     Page<IncidentLog> findEscalationCandidates(@Param("now") LocalDateTime now, Pageable pageable);
 
     Optional<IncidentLog> findByIdAndUserId(Long id, Long userId);
+
+    @Modifying
+    @Query("delete from IncidentLog i where i.createdAt < :before and i.status = 'RESOLVED'")
+    int deleteResolvedOlderThan(@Param("before") LocalDateTime before);
 }

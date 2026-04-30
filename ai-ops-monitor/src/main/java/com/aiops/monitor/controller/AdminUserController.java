@@ -4,6 +4,8 @@ import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.repository.IncidentLogRepository;
 import com.aiops.monitor.repository.MonitorTargetRepository;
 import com.aiops.monitor.repository.UserRepository;
+import com.aiops.monitor.service.AuditLogService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -24,6 +26,7 @@ public class AdminUserController {
     private final UserRepository userRepository;
     private final IncidentLogRepository incidentLogRepository;
     private final MonitorTargetRepository monitorTargetRepository;
+    private final AuditLogService auditLogService;
 
     @GetMapping("/users")
     public ResponseEntity<Page<User>> listUsers(
@@ -47,24 +50,35 @@ public class AdminUserController {
     }
 
     @PutMapping("/users/{id}/role")
-    public ResponseEntity<?> updateRole(@PathVariable Long id, @RequestBody Map<String, String> body) {
+    public ResponseEntity<?> updateRole(@PathVariable Long id,
+                                        @RequestBody Map<String, String> body,
+                                        org.springframework.security.core.Authentication authentication,
+                                        HttpServletRequest request) {
         User user = userRepository.findById(id).orElseThrow();
         user.setRole(User.Role.valueOf(body.get("role")));
         userRepository.save(user);
+        auditLogService.record(authentication, request, "USER_ROLE_UPDATE", "USER", id, Map.of("role", user.getRole().name()));
         return ResponseEntity.ok(Map.of("message", "角色已更新"));
     }
 
     @PutMapping("/users/{id}/status")
-    public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestBody Map<String, Boolean> body) {
+    public ResponseEntity<?> updateStatus(@PathVariable Long id,
+                                          @RequestBody Map<String, Boolean> body,
+                                          org.springframework.security.core.Authentication authentication,
+                                          HttpServletRequest request) {
         User user = userRepository.findById(id).orElseThrow();
         user.setEnabled(body.get("enabled"));
         userRepository.save(user);
+        auditLogService.record(authentication, request, "USER_STATUS_UPDATE", "USER", id, Map.of("enabled", user.isEnabled()));
         return ResponseEntity.ok(Map.of("message", "状态已更新"));
     }
 
     @DeleteMapping("/users/{id}")
-    public ResponseEntity<?> deleteUser(@PathVariable Long id) {
+    public ResponseEntity<?> deleteUser(@PathVariable Long id,
+                                        org.springframework.security.core.Authentication authentication,
+                                        HttpServletRequest request) {
         userRepository.deleteById(id);
+        auditLogService.record(authentication, request, "USER_DELETE", "USER", id, Map.of("id", id));
         return ResponseEntity.ok(Map.of("message", "删除成功"));
     }
 

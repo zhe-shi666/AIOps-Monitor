@@ -49,6 +49,9 @@ public class AlarmCheckTask {
     @Autowired
     private InvestigationOrchestrator investigationOrchestrator;
 
+    @Value("${monitor.investigation.auto-open-from-incident:false}")
+    private boolean autoOpenInvestigationFromIncident;
+
     @Value("${monitor.mode:standalone}")
     private String monitorMode;
 
@@ -155,10 +158,12 @@ public class AlarmCheckTask {
         logEntry.setMessage(String.format("%s 指标超过阈值: %s > %s", name, display, thresholdDisplay));
         logEntry.setStatus("OPEN");
         IncidentLog saved = logRepository.save(logEntry);
-        try {
-            investigationOrchestrator.openFromIncident(saved);
-        } catch (Exception ex) {
-            log.warn("本地告警创建调查失败: incidentId={}, reason={}", saved.getId(), ex.getMessage());
+        if (autoOpenInvestigationFromIncident) {
+            try {
+                investigationOrchestrator.openFromIncident(saved);
+            } catch (Exception ex) {
+                log.warn("本地告警创建调查失败: incidentId={}, reason={}", saved.getId(), ex.getMessage());
+            }
         }
 
 

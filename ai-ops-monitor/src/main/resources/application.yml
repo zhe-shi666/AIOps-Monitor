@@ -51,8 +51,22 @@ management:
       application: ai-ops-monitor
 
 monitor:
+  ai:
+    generate-timeout-seconds: 35
+  investigation:
+    auto-open-from-incident: false
   target:
     offline-seconds: 90
+  agent:
+    latest-version: agent-lite-1.2.0-cross
+  retention:
+    metrics-days: 30
+    logs-days: 14
+    traces-days: 14
+    resolved-incidents-days: 180
+    closed-anomalies-days: 90
+    audit-days: 365
+    cron: "0 30 3 * * *"
   local:
     default-user-id: ${MONITOR_LOCAL_DEFAULT_USER_ID:}
     default-username: ${MONITOR_LOCAL_DEFAULT_USERNAME:}

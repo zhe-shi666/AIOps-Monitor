@@ -4,7 +4,6 @@ import com.aiops.monitor.model.dto.AgentHeartbeatRequest;
 import com.aiops.monitor.model.dto.AgentRegisterRequest;
 import com.aiops.monitor.model.dto.MetricDTO;
 import com.aiops.monitor.model.entity.AlertEscalationPolicy;
-import com.aiops.monitor.model.entity.AlertThresholdConfig;
 import com.aiops.monitor.model.entity.IncidentLog;
 import com.aiops.monitor.model.entity.MonitorTarget;
 import com.aiops.monitor.model.entity.SystemMetricsHistory;
@@ -16,7 +15,7 @@ import com.aiops.monitor.service.AnomalyDetectionService;
 import com.aiops.monitor.service.InvestigationOrchestrator;
 import com.aiops.monitor.service.MetricsPublisher;
 import com.aiops.monitor.service.NotificationDispatcherService;
-import com.aiops.monitor.service.ThresholdConfigService;
+import com.aiops.monitor.service.TargetThresholdService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,13 +41,15 @@ public class AgentIngestController {
     private final SystemMetricsRepository systemMetricsRepository;
     private final IncidentLogRepository incidentLogRepository;
     private final MetricsPublisher metricsPublisher;
-    private final ThresholdConfigService thresholdConfigService;
+    private final TargetThresholdService targetThresholdService;
     private final EscalationPolicyService escalationPolicyService;
     private final NotificationDispatcherService notificationDispatcherService;
     private final InvestigationOrchestrator investigationOrchestrator;
     private final AnomalyDetectionService anomalyDetectionService;
     private final Map<String, LocalDateTime> lastAlertAt = new ConcurrentHashMap<>();
     private final Map<String, Integer> breachCounter = new ConcurrentHashMap<>();
+    @Value("${monitor.investigation.auto-open-from-incident:false}")
+    private boolean autoOpenInvestigationFromIncident;
 
     @Value("${monitor.threshold.net-rx:10485760}")
     private double netRxThreshold;
@@ -105,41 +106,45 @@ public class AgentIngestController {
         history.setUserId(target.getUserId());
         history.setTargetId(target.getId());
         systemMetricsRepository.save(history);
-        anomalyDetectionService.detectAndPersist(history);
 
-        sendMetric("CPU", request.getCpuUsage(), request, target);
-        sendMetric("MEMORY", request.getMemUsage(), request, target);
-        sendMetric("DISK", request.getDiskUsage(), request, target);
-        sendMetric("NET_RX", request.getNetRxBytesPerSec(), request, target);
-        sendMetric("NET_TX", request.getNetTxBytesPerSec(), request, target);
-        sendMetric("PROCESS_COUNT", request.getProcessCount() == null ? null : request.getProcessCount().doubleValue(), request, target);
+        runBestEffort("agent anomaly detection", () -> anomalyDetectionService.detectAndPersist(history));
+        runBestEffort("agent metric publish", () -> {
+            sendMetric("CPU", request.getCpuUsage(), request, target);
+            sendMetric("MEMORY", request.getMemUsage(), request, target);
+            sendMetric("DISK", request.getDiskUsage(), request, target);
+            sendMetric("NET_RX", request.getNetRxBytesPerSec(), request, target);
+            sendMetric("NET_TX", request.getNetTxBytesPerSec(), request, target);
+            sendMetric("PROCESS_COUNT", request.getProcessCount() == null ? null : request.getProcessCount().doubleValue(), request, target);
+        });
 
-        AlertThresholdConfig threshold = thresholdConfigService.getOrCreateByUserId(target.getUserId());
-        AlertEscalationPolicy escalationPolicy = escalationPolicyService.getOrCreateByUserId(target.getUserId());
-        evaluateAndRecordIncident(target, "CPU", request.getCpuUsage(), threshold.getCpuThreshold(),
-                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds(), escalationPolicy);
-        evaluateAndRecordIncident(target, "MEMORY", request.getMemUsage(), threshold.getMemoryThreshold(),
-                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds(), escalationPolicy);
-        evaluateAndRecordIncident(target, "DISK", request.getDiskUsage(), threshold.getDiskThreshold(),
-                threshold.getConsecutiveBreachCount(), threshold.getSilenceSeconds(), escalationPolicy);
-        evaluateAndRecordIncident(target, "PROCESS_COUNT",
-                request.getProcessCount() == null ? null : request.getProcessCount().doubleValue(),
-                threshold.getProcessCountThreshold(),
-                threshold.getConsecutiveBreachCount(),
-                threshold.getSilenceSeconds(),
-                escalationPolicy);
-        evaluateAndRecordIncident(target, "NET_RX",
-                request.getNetRxBytesPerSec(),
-                netRxThreshold,
-                threshold.getConsecutiveBreachCount(),
-                threshold.getSilenceSeconds(),
-                escalationPolicy);
-        evaluateAndRecordIncident(target, "NET_TX",
-                request.getNetTxBytesPerSec(),
-                netTxThreshold,
-                threshold.getConsecutiveBreachCount(),
-                threshold.getSilenceSeconds(),
-                escalationPolicy);
+        runBestEffort("agent incident evaluation", () -> {
+            TargetThresholdService.EffectiveThreshold threshold = targetThresholdService.resolve(target.getUserId(), target.getId());
+            AlertEscalationPolicy escalationPolicy = escalationPolicyService.getOrCreateByUserId(target.getUserId());
+            evaluateAndRecordIncident(target, "CPU", request.getCpuUsage(), threshold.cpuThreshold(),
+                    threshold.consecutiveBreachCount(), threshold.silenceSeconds(), escalationPolicy);
+            evaluateAndRecordIncident(target, "MEMORY", request.getMemUsage(), threshold.memoryThreshold(),
+                    threshold.consecutiveBreachCount(), threshold.silenceSeconds(), escalationPolicy);
+            evaluateAndRecordIncident(target, "DISK", request.getDiskUsage(), threshold.diskThreshold(),
+                    threshold.consecutiveBreachCount(), threshold.silenceSeconds(), escalationPolicy);
+            evaluateAndRecordIncident(target, "PROCESS_COUNT",
+                    request.getProcessCount() == null ? null : request.getProcessCount().doubleValue(),
+                    threshold.processCountThreshold(),
+                    threshold.consecutiveBreachCount(),
+                    threshold.silenceSeconds(),
+                    escalationPolicy);
+            evaluateAndRecordIncident(target, "NET_RX",
+                    request.getNetRxBytesPerSec(),
+                    netRxThreshold,
+                    threshold.consecutiveBreachCount(),
+                    threshold.silenceSeconds(),
+                    escalationPolicy);
+            evaluateAndRecordIncident(target, "NET_TX",
+                    request.getNetTxBytesPerSec(),
+                    netTxThreshold,
+                    threshold.consecutiveBreachCount(),
+                    threshold.silenceSeconds(),
+                    escalationPolicy);
+        });
 
         return ResponseEntity.ok(Map.of(
                 "targetId", target.getId(),
@@ -165,6 +170,14 @@ public class AgentIngestController {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void runBestEffort(String taskName, Runnable task) {
+        try {
+            task.run();
+        } catch (Exception ex) {
+            log.warn("{} failed after heartbeat accepted: {}", taskName, ex.getMessage(), ex);
+        }
     }
 
     private void sendMetric(String name, Double value, AgentHeartbeatRequest request, MonitorTarget target) {
@@ -285,10 +298,12 @@ public class AgentIngestController {
         incidentEntity.setCreatedAt(now);
         IncidentLog saved = incidentLogRepository.save(incidentEntity);
         notificationDispatcherService.dispatchIncidentOpened(saved);
-        try {
-            investigationOrchestrator.openFromIncident(saved);
-        } catch (Exception ex) {
-            log.warn("create investigation failed, incidentId={}, reason={}", saved.getId(), ex.getMessage());
+        if (autoOpenInvestigationFromIncident) {
+            try {
+                investigationOrchestrator.openFromIncident(saved);
+            } catch (Exception ex) {
+                log.warn("create investigation failed, incidentId={}, reason={}", saved.getId(), ex.getMessage());
+            }
         }
     }
 

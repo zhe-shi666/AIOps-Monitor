@@ -6,8 +6,10 @@ export const getInvestigationQualitySummary = () => api.get('/api/investigations
 export const getInvestigationDetail = (id) => api.get(`/api/investigations/${id}`)
 export const getInvestigationTimeline = (id) => api.get(`/api/investigations/${id}/timeline`)
 export const closeInvestigation = (id) => api.post(`/api/investigations/${id}/close`)
-export const generateInvestigationAi = (id, payload) => api.post(`/api/investigations/${id}/ai-generate`, payload || {})
-export const generateInvestigationPostmortem = (id, payload) => api.post(`/api/investigations/${id}/postmortem-draft`, payload || {})
+export const generateInvestigationAi = (id, payload) =>
+  api.post(`/api/investigations/${id}/ai-generate`, payload || {}, { timeout: 120000 })
+export const generateInvestigationPostmortem = (id, payload) =>
+  api.post(`/api/investigations/${id}/postmortem-draft`, payload || {}, { timeout: 120000 })
 export const createInvestigationObservation = (id, payload) => api.post(`/api/investigations/${id}/observations`, payload)
 export const createInvestigationHypothesis = (id, payload) => api.post(`/api/investigations/${id}/hypotheses`, payload)
 export const createInvestigationAction = (id, payload) => api.post(`/api/investigations/${id}/actions`, payload)

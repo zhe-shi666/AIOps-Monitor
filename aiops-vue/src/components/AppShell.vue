@@ -119,6 +119,7 @@ const { isZh, t } = useI18n({
   'nav.thresholds': { zh: '阈值策略', en: 'Thresholds' },
   'nav.escalation': { zh: '升级策略', en: 'Escalation' },
   'nav.notifications': { zh: '通知通道', en: 'Channels' },
+  'nav.audit': { zh: '运维审计', en: 'Audit Logs' },
   'nav.admin': { zh: '管理后台', en: 'Admin Console' },
   'action.menu': { zh: '菜单', en: 'Menu' },
   'action.light': { zh: '白天模式', en: 'Light' },
@@ -141,7 +142,8 @@ const monitorNav = computed(() => [
 const settingNav = computed(() => [
   { path: '/settings/thresholds', label: t('nav.thresholds') },
   { path: '/settings/escalation', label: t('nav.escalation') },
-  { path: '/settings/notifications', label: t('nav.notifications') }
+  { path: '/settings/notifications', label: t('nav.notifications') },
+  { path: '/audit-logs', label: t('nav.audit') }
 ])
 
 const headerMap = computed(() => ({
@@ -176,6 +178,10 @@ const headerMap = computed(() => ({
   '/settings/notifications': {
     title: isZh.value ? '通知通道编排' : 'Notification Channels',
     subtitle: isZh.value ? 'Webhook 通道配置与投递管理' : 'Webhook channel configuration and delivery management'
+  },
+  '/audit-logs': {
+    title: isZh.value ? '运维审计' : 'Operations Audit',
+    subtitle: isZh.value ? '关键变更、密钥轮换与用户治理留痕' : 'Trace key changes, rotations, and user governance'
   },
   '/admin/users': {
     title: isZh.value ? '管理后台' : 'Admin Console',

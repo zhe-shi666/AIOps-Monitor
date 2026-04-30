@@ -3,7 +3,11 @@ package com.aiops.monitor.repository;
 import com.aiops.monitor.model.entity.IncidentLog;
 import com.aiops.monitor.model.entity.SystemMetricsHistory;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -16,4 +20,8 @@ public interface SystemMetricsRepository extends JpaRepository<SystemMetricsHist
     List<SystemMetricsHistory> findTop20ByHostnameOrderByTimestampDesc(String hostname);
 
     List<SystemMetricsHistory> findTop80ByUserIdAndTargetIdOrderByTimestampDesc(Long userId, Long targetId);
+
+    @Modifying
+    @Query("delete from SystemMetricsHistory h where h.timestamp < :before")
+    int deleteOlderThan(@Param("before") LocalDateTime before);
 }

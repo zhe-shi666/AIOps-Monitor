@@ -9,6 +9,7 @@ const routes = [
   { path: '/workbench', component: () => import('../views/EventWorkbenchView.vue'), meta: { requiresAuth: true } },
   { path: '/targets', component: () => import('../views/TargetsView.vue'), meta: { requiresAuth: true } },
   { path: '/incidents', component: () => import('../views/IncidentsView.vue'), meta: { requiresAuth: true } },
+  { path: '/audit-logs', component: () => import('../views/AuditLogsView.vue'), meta: { requiresAuth: true } },
   { path: '/settings/thresholds', component: () => import('../views/ThresholdSettingsView.vue'), meta: { requiresAuth: true } },
   { path: '/settings/escalation', component: () => import('../views/EscalationPolicyView.vue'), meta: { requiresAuth: true } },
   { path: '/settings/notifications', component: () => import('../views/NotificationChannelsView.vue'), meta: { requiresAuth: true } },

@@ -189,10 +189,21 @@
                   size="small"
                   type="primary"
                   plain
-                  :disabled="!snapshotDraft.trim()"
                   :loading="snapshotSaving"
                   @click="saveSnapshot">
                   {{ locale === 'zh' ? '保存快照' : 'Save Snapshot' }}
+                </el-button>
+                <el-button
+                  size="small"
+                  plain
+                  @click="copySnapshotMarkdown">
+                  {{ locale === 'zh' ? '复制 Markdown' : 'Copy Markdown' }}
+                </el-button>
+                <el-button
+                  size="small"
+                  plain
+                  @click="downloadSnapshotMarkdown">
+                  {{ locale === 'zh' ? '下载 .md' : 'Download .md' }}
                 </el-button>
               </div>
             </div>
@@ -734,6 +745,15 @@ function formatPercent(value) {
   return `${n.toFixed(2)}%`
 }
 
+function resolveErrorMessage(error, fallbackZh, fallbackEn) {
+  const fallback = locale.value === 'zh' ? fallbackZh : fallbackEn
+  if (!error) return fallback
+  if (error.code === 'ECONNABORTED') {
+    return locale.value === 'zh' ? '请求超时：AI 生成耗时较长，请稍后重试' : 'Request timeout: AI generation may take longer, please retry'
+  }
+  return error?.response?.data?.message || error?.message || fallback
+}
+
 function scheduleReconnect() {
   clearTimeout(reconnectTimer)
   reconnectTimer = setTimeout(connectReportsStream, 5000)
@@ -942,8 +962,8 @@ async function runStructuredAnalysis() {
     await loadInvestigationTimeline(investigationId, true)
     await loadActionAudits(investigationId, true)
     await loadQualitySummary(true)
-  } catch (_e) {
-    ElMessage.error(locale.value === 'zh' ? 'AI 分析失败' : 'AI analysis failed')
+  } catch (e) {
+    ElMessage.error(resolveErrorMessage(e, 'AI 分析失败', 'AI analysis failed'))
   } finally {
     aiGenerating.value = false
   }
@@ -962,8 +982,8 @@ async function generatePostmortemDraft() {
     await loadInvestigationDetail(investigationId, true)
     await loadInvestigationTimeline(investigationId, true)
     await loadActionAudits(investigationId, true)
-  } catch (_e) {
-    ElMessage.error(locale.value === 'zh' ? '生成复盘草稿失败' : 'Failed to generate postmortem')
+  } catch (e) {
+    ElMessage.error(resolveErrorMessage(e, '生成复盘草稿失败', 'Failed to generate postmortem'))
   } finally {
     postmortemGenerating.value = false
   }
@@ -1190,7 +1210,11 @@ async function retryAction(action) {
 async function saveSnapshot() {
   const investigationId = selectedDetail.value?.investigation?.id
   const markdown = snapshotDraft.value.trim()
-  if (!investigationId || !markdown) return
+  if (!investigationId) return
+  if (!markdown) {
+    ElMessage.warning(locale.value === 'zh' ? '请先输入或生成快照内容' : 'Please input or generate snapshot content first')
+    return
+  }
   snapshotSaving.value = true
   try {
     await createInvestigationSnapshot(investigationId, {
@@ -1202,11 +1226,49 @@ async function saveSnapshot() {
     await loadInvestigationDetail(investigationId, true)
     await loadInvestigationTimeline(investigationId, true)
     await loadActionAudits(investigationId, true)
-  } catch (_e) {
-    ElMessage.error(locale.value === 'zh' ? '保存快照失败' : 'Failed to save snapshot')
+  } catch (e) {
+    ElMessage.error(resolveErrorMessage(e, '保存快照失败', 'Failed to save snapshot'))
   } finally {
     snapshotSaving.value = false
   }
+}
+
+function getCurrentSnapshotMarkdown() {
+  const draft = snapshotDraft.value.trim()
+  if (draft) return draft
+  return (selectedDetail.value?.latestSnapshot?.reportMarkdown || '').trim()
+}
+
+async function copySnapshotMarkdown() {
+  const markdown = getCurrentSnapshotMarkdown()
+  if (!markdown) {
+    ElMessage.warning(locale.value === 'zh' ? '当前没有可复制的快照内容' : 'No snapshot content to copy')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(markdown)
+    ElMessage.success(locale.value === 'zh' ? '快照 Markdown 已复制' : 'Snapshot markdown copied')
+  } catch (_e) {
+    ElMessage.error(locale.value === 'zh' ? '复制失败，请检查浏览器权限' : 'Copy failed, please check browser permission')
+  }
+}
+
+function downloadSnapshotMarkdown() {
+  const markdown = getCurrentSnapshotMarkdown()
+  if (!markdown) {
+    ElMessage.warning(locale.value === 'zh' ? '当前没有可下载的快照内容' : 'No snapshot content to download')
+    return
+  }
+  const id = selectedDetail.value?.investigation?.id || 'unknown'
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `investigation-${id}-snapshot.md`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 onMounted(async () => {

@@ -3,6 +3,7 @@ package com.aiops.monitor.repository;
 import com.aiops.monitor.model.entity.TraceSpan;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -26,4 +27,8 @@ public interface TraceSpanRepository extends JpaRepository<TraceSpan, Long> {
                                         @Param("hostname") String hostname,
                                         @Param("startAt") LocalDateTime startAt,
                                         Pageable pageable);
+
+    @Modifying
+    @Query("delete from TraceSpan t where t.createdAt < :before")
+    int deleteOlderThan(@Param("before") LocalDateTime before);
 }
