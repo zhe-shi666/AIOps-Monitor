@@ -1,6 +1,6 @@
 <template>
   <div class="page-surface notification-page">
-    <div class="page-hero">
+    <div class="page-hero notification-hero">
       <div>
         <h1>{{ t('title') }}</h1>
         <p>{{ t('subtitle') }}</p>
@@ -10,138 +10,176 @@
       </div>
     </div>
 
-    <section class="card-panel p-6 space-y-6">
-      <div class="space-y-4">
-        <div class="section-head compact-head">
-          <div>
-            <h2 class="section-title">{{ t('myProfileTitle') }}</h2>
-            <p class="section-subtitle">{{ t('myProfileSubtitle') }}</p>
-          </div>
-          <el-tag :type="profileForm.enabled ? 'success' : 'info'">{{ profileForm.enabled ? t('enabled') : t('disabled') }}</el-tag>
-        </div>
-
-        <el-form :model="profileForm" label-width="110px" class="space-y-3">
-          <el-form-item :label="t('recipientEmail')">
-            <el-input v-model="profileForm.recipientEmail" :placeholder="t('recipientPlaceholder')" />
-          </el-form-item>
-          <p class="text-sm text-slate-400 -mt-2">
-            {{ t('recipientHint') }}
-          </p>
-          <el-form-item :label="t('receiveSwitch')">
-            <el-switch v-model="profileForm.enabled" />
-          </el-form-item>
-        </el-form>
-
-        <el-alert
-          v-if="!profileForm.enabled"
-          type="warning"
-          :closable="false"
-          :title="t('profileDisabledTitle')"
-          :description="t('profileDisabledDesc')" />
-
-        <div class="flex justify-end">
-          <el-button type="primary" :loading="savingProfile" @click="saveProfile">{{ t('saveMyProfile') }}</el-button>
-        </div>
+    <section class="kpi-grid notification-kpi-grid">
+      <div class="kpi-item notification-kpi">
+        <p class="kpi-label">{{ t('profileStatus') }}</p>
+        <p class="kpi-value" :class="profileForm.enabled ? 'text-emerald-300' : 'text-slate-300'">
+          {{ profileForm.enabled ? t('enabled') : t('disabled') }}
+        </p>
       </div>
-
-      <template v-if="auth.isAdmin">
-        <div class="section-divider"></div>
-
-        <div class="space-y-4">
-          <div class="section-head compact-head">
-            <div>
-              <h2 class="section-title">{{ t('platformMailTitle') }}</h2>
-              <p class="section-subtitle">{{ t('platformMailSubtitle') }}</p>
-            </div>
-            <el-tag :type="platformForm.enabled ? 'warning' : 'info'">{{ platformConfigured ? t('configured') : t('notConfigured') }}</el-tag>
-          </div>
-
-          <el-form :model="platformForm" label-width="120px" class="space-y-3">
-            <el-form-item :label="t('smtpHost')">
-              <el-input v-model="platformForm.smtpHost" placeholder="smtp.qq.com" />
-            </el-form-item>
-            <el-form-item :label="t('smtpPort')">
-              <el-input-number v-model="platformForm.smtpPort" :min="1" :max="65535" class="w-full" />
-            </el-form-item>
-            <el-form-item :label="t('smtpUsername')">
-              <el-input v-model="platformForm.smtpUsername" :placeholder="t('smtpUserPlaceholder')" />
-            </el-form-item>
-            <el-form-item :label="t('smtpPassword')">
-              <el-input v-model="platformForm.smtpPassword" type="password" show-password :placeholder="platformConfigured ? t('smtpPasswordKeep') : t('smtpPasswordPlaceholder')" />
-            </el-form-item>
-            <el-form-item :label="t('fromAddress')">
-              <el-input v-model="platformForm.fromAddress" :placeholder="t('fromAddressPlaceholder')" />
-            </el-form-item>
-            <el-form-item :label="t('fromName')">
-              <el-input v-model="platformForm.fromName" :placeholder="t('fromNamePlaceholder')" />
-            </el-form-item>
-            <el-form-item :label="t('smtpSecurity')">
-              <div class="flex flex-wrap gap-3">
-                <el-switch v-model="platformForm.smtpAuth" :active-text="t('smtpAuth')" />
-                <el-switch v-model="platformForm.smtpStarttls" :active-text="t('smtpStarttls')" />
-                <el-switch v-model="platformForm.enabled" :active-text="t('mailEnabled')" />
-              </div>
-            </el-form-item>
-            <el-form-item :label="t('testRecipient')">
-              <el-input v-model="platformTestRecipient" :placeholder="t('testRecipientPlaceholder')" />
-            </el-form-item>
-          </el-form>
-
-          <div class="flex flex-wrap justify-end gap-3">
-            <el-button :loading="testingPlatform" @click="testPlatformMail">{{ t('testMail') }}</el-button>
-            <el-button type="primary" :loading="savingPlatform" @click="savePlatformMail">{{ t('savePlatformMail') }}</el-button>
-          </div>
-        </div>
-      </template>
+      <div v-if="auth.isAdmin" class="kpi-item notification-kpi">
+        <p class="kpi-label">{{ t('platformStatus') }}</p>
+        <p class="kpi-value" :class="platformConfigured ? 'text-amber-300' : 'text-slate-300'">
+          {{ platformConfigured ? t('configured') : t('notConfigured') }}
+        </p>
+      </div>
+      <div v-if="canOperate" class="kpi-item notification-kpi">
+        <p class="kpi-label">{{ t('webhookCount') }}</p>
+        <p class="kpi-value text-cyan-300">{{ channels.length }}</p>
+      </div>
     </section>
 
-    <section v-if="canOperate" class="card-panel p-6 space-y-4 mt-6">
-      <div class="section-head compact-head">
+    <section class="card-panel notification-main-card">
+      <div class="section-head notification-head">
         <div>
-          <h2 class="section-title">{{ t('webhookTitle') }}</h2>
-          <p class="section-subtitle">{{ t('webhookSubtitle') }}</p>
+          <h2 class="section-title">{{ t('centerTitle') }}</h2>
+          <p class="section-subtitle">{{ t('centerSubtitle') }}</p>
         </div>
-        <el-button type="primary" @click="openCreateDialog">{{ t('createWebhook') }}</el-button>
       </div>
 
-      <div class="ops-table table-wrap">
-        <el-table :data="channels" v-loading="loadingChannels">
-          <el-table-column prop="name" :label="t('name')" min-width="160" />
-          <el-table-column :label="t('target')" min-width="300">
-            <template #default="{ row }">
-              <span class="font-mono text-xs text-slate-300 break-all">{{ row.webhookUrl || '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column :label="t('enabled')" width="120" align="center">
-            <template #default="{ row }">
-              <el-switch
-                :model-value="row.enabled"
-                :disabled="!canOperate"
-                @change="(value) => toggleEnabled(row, value)"
-                inline-prompt
-                active-text="ON"
-                inactive-text="OFF" />
-            </template>
-          </el-table-column>
-          <el-table-column :label="t('lastDelivery')" width="180">
-            <template #default="{ row }">{{ formatDate(row.lastNotifiedAt) }}</template>
-          </el-table-column>
-          <el-table-column :label="t('lastError')" min-width="240">
-            <template #default="{ row }">
-              <span class="text-xs text-rose-300">{{ row.lastError || '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column :label="t('actions')" width="250" fixed="right">
-            <template #default="{ row }">
-              <div class="flex items-center gap-2 flex-wrap justify-end">
-                <el-button size="small" @click="testChannel(row)">{{ t('test') }}</el-button>
-                <el-button size="small" @click="openEditDialog(row)">{{ t('edit') }}</el-button>
-                <el-button size="small" type="danger" @click="removeChannel(row)">{{ t('delete') }}</el-button>
+      <el-tabs v-model="activeTab" class="notification-tabs">
+        <el-tab-pane :label="t('tabProfile')" name="profile">
+          <section class="notification-section-grid">
+            <div class="notification-card card-panel-inner">
+              <div class="section-head compact-head">
+                <div>
+                  <h3 class="section-title">{{ t('myProfileTitle') }}</h3>
+                  <p class="section-subtitle">{{ t('myProfileSubtitle') }}</p>
+                </div>
+                <el-tag :type="profileForm.enabled ? 'success' : 'info'">{{ profileForm.enabled ? t('enabled') : t('disabled') }}</el-tag>
               </div>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
+
+              <el-form :model="profileForm" label-width="110px" class="notification-form-grid">
+                <el-form-item :label="t('recipientEmail')">
+                  <el-input v-model="profileForm.recipientEmail" :placeholder="t('recipientPlaceholder')" />
+                </el-form-item>
+                <div class="form-helper-box">
+                  {{ t('recipientHint') }}
+                </div>
+                <el-form-item :label="t('receiveSwitch')">
+                  <el-switch v-model="profileForm.enabled" />
+                </el-form-item>
+              </el-form>
+
+              <el-alert
+                v-if="!profileForm.enabled"
+                type="warning"
+                :closable="false"
+                :title="t('profileDisabledTitle')"
+                :description="t('profileDisabledDesc')" />
+
+              <div class="notification-actions">
+                <el-button type="primary" :loading="savingProfile" @click="saveProfile">{{ t('saveMyProfile') }}</el-button>
+              </div>
+            </div>
+          </section>
+        </el-tab-pane>
+
+        <el-tab-pane v-if="auth.isAdmin" :label="t('tabPlatform')" name="platform">
+          <section class="notification-section-grid">
+            <div class="notification-card card-panel-inner">
+              <div class="section-head compact-head">
+                <div>
+                  <h3 class="section-title">{{ t('platformMailTitle') }}</h3>
+                  <p class="section-subtitle">{{ t('platformMailSubtitle') }}</p>
+                </div>
+                <el-tag :type="platformForm.enabled ? 'warning' : 'info'">{{ platformConfigured ? t('configured') : t('notConfigured') }}</el-tag>
+              </div>
+
+              <el-form :model="platformForm" label-width="120px" class="notification-form-grid">
+                <div class="notification-form-columns two-col">
+                  <el-form-item :label="t('smtpHost')">
+                    <el-input v-model="platformForm.smtpHost" placeholder="smtp.qq.com" />
+                  </el-form-item>
+                  <el-form-item :label="t('smtpPort')">
+                    <el-input-number v-model="platformForm.smtpPort" :min="1" :max="65535" class="w-full" />
+                  </el-form-item>
+                  <el-form-item :label="t('smtpUsername')">
+                    <el-input v-model="platformForm.smtpUsername" :placeholder="t('smtpUserPlaceholder')" />
+                  </el-form-item>
+                  <el-form-item :label="t('smtpPassword')">
+                    <el-input v-model="platformForm.smtpPassword" type="password" show-password :placeholder="platformConfigured ? t('smtpPasswordKeep') : t('smtpPasswordPlaceholder')" />
+                  </el-form-item>
+                  <el-form-item :label="t('fromAddress')">
+                    <el-input v-model="platformForm.fromAddress" :placeholder="t('fromAddressPlaceholder')" />
+                  </el-form-item>
+                  <el-form-item :label="t('fromName')">
+                    <el-input v-model="platformForm.fromName" :placeholder="t('fromNamePlaceholder')" />
+                  </el-form-item>
+                </div>
+                <el-form-item :label="t('smtpSecurity')">
+                  <div class="switch-chip-row">
+                    <el-switch v-model="platformForm.smtpAuth" :active-text="t('smtpAuth')" />
+                    <el-switch v-model="platformForm.smtpStarttls" :active-text="t('smtpStarttls')" />
+                    <el-switch v-model="platformForm.enabled" :active-text="t('mailEnabled')" />
+                  </div>
+                </el-form-item>
+                <el-form-item :label="t('testRecipient')">
+                  <el-input v-model="platformTestRecipient" :placeholder="t('testRecipientPlaceholder')" />
+                </el-form-item>
+              </el-form>
+
+              <div class="notification-actions">
+                <el-button :loading="testingPlatform" @click="testPlatformMail">{{ t('testMail') }}</el-button>
+                <el-button type="primary" :loading="savingPlatform" @click="savePlatformMail">{{ t('savePlatformMail') }}</el-button>
+              </div>
+            </div>
+          </section>
+        </el-tab-pane>
+
+        <el-tab-pane v-if="canOperate" :label="t('tabWebhook')" name="webhook">
+          <section class="notification-section-grid">
+            <div class="notification-card card-panel-inner">
+              <div class="section-head compact-head">
+                <div>
+                  <h3 class="section-title">{{ t('webhookTitle') }}</h3>
+                  <p class="section-subtitle">{{ t('webhookSubtitle') }}</p>
+                </div>
+                <el-button type="primary" @click="openCreateDialog">{{ t('createWebhook') }}</el-button>
+              </div>
+
+              <div class="ops-table table-wrap notification-table-wrap">
+                <el-table :data="channels" v-loading="loadingChannels">
+                  <el-table-column prop="name" :label="t('name')" min-width="170" />
+                  <el-table-column :label="t('target')" min-width="320">
+                    <template #default="{ row }">
+                      <span class="webhook-url-text">{{ row.webhookUrl || '-' }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="t('enabled')" width="120" align="center">
+                    <template #default="{ row }">
+                      <el-switch
+                        :model-value="row.enabled"
+                        :disabled="!canOperate"
+                        @change="(value) => toggleEnabled(row, value)"
+                        inline-prompt
+                        active-text="ON"
+                        inactive-text="OFF" />
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="t('lastDelivery')" width="180">
+                    <template #default="{ row }">{{ formatDate(row.lastNotifiedAt) }}</template>
+                  </el-table-column>
+                  <el-table-column :label="t('lastError')" min-width="240">
+                    <template #default="{ row }">
+                      <span class="webhook-error-text">{{ row.lastError || '-' }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column :label="t('actions')" width="260" fixed="right">
+                    <template #default="{ row }">
+                      <div class="notification-action-row">
+                        <el-button size="small" :loading="testingWebhookId === row.id" @click="testChannel(row)">{{ t('test') }}</el-button>
+                        <el-button size="small" @click="openEditDialog(row)">{{ t('edit') }}</el-button>
+                        <el-button size="small" type="danger" @click="removeChannel(row)">{{ t('delete') }}</el-button>
+                      </div>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </div>
+            </div>
+          </section>
+        </el-tab-pane>
+      </el-tabs>
     </section>
 
     <el-dialog
@@ -149,7 +187,7 @@
       :title="editingId ? t('editWebhook') : t('createWebhook')"
       width="640px"
       destroy-on-close>
-      <el-form :model="form" label-width="120px" class="space-y-3">
+      <el-form :model="form" label-width="120px" class="notification-form-grid">
         <el-form-item :label="t('name')">
           <el-input v-model="form.name" maxlength="100" :placeholder="t('webhookNamePlaceholder')" />
         </el-form-item>
@@ -165,7 +203,7 @@
       </el-form>
 
       <template #footer>
-        <div class="flex items-center justify-end gap-2">
+        <div class="notification-actions">
           <el-button @click="dialogVisible = false">{{ t('cancel') }}</el-button>
           <el-button type="primary" :loading="savingWebhook" @click="saveChannel">{{ t('save') }}</el-button>
         </div>
@@ -207,6 +245,7 @@ const editingId = ref(null)
 const channels = ref([])
 const platformConfigured = ref(false)
 const platformTestRecipient = ref('')
+const activeTab = ref('profile')
 
 const profileForm = reactive({
   recipientEmail: '',
@@ -236,17 +275,25 @@ const loadingAny = computed(() => loadingProfile.value || loadingPlatform.value 
 
 const { locale, t } = useI18n({
   title: { zh: '通知中心', en: 'Notification Center' },
-  subtitle: { zh: '管理员统一配置发信通道，用户维护自己的接收邮箱，Webhook 作为系统联动出口保留。', en: 'Admins manage outbound mail, users manage their own recipient address, and webhooks remain available for system integrations.' },
+  subtitle: { zh: '统一管理用户收件邮箱、平台发信配置与 Webhook 集成通道。', en: 'Manage personal recipient settings, outbound mail, and webhook integrations in one place.' },
   refresh: { zh: '刷新', en: 'Refresh' },
+  centerTitle: { zh: '通知配置面板', en: 'Notification Configuration' },
+  centerSubtitle: { zh: '按角色进入不同配置分区，避免一页堆叠过多表单。', en: 'Use role-based tabs to keep configuration areas focused and easier to operate.' },
+  tabProfile: { zh: '我的接收', en: 'My Recipient' },
+  tabPlatform: { zh: '平台发信', en: 'Platform Mail' },
+  tabWebhook: { zh: 'Webhook 通道', en: 'Webhook Channels' },
+  profileStatus: { zh: '个人接收状态', en: 'Recipient Status' },
+  platformStatus: { zh: '平台发信状态', en: 'Platform Mail Status' },
+  webhookCount: { zh: 'Webhook 数量', en: 'Webhook Count' },
   myProfileTitle: { zh: '我的接收设置', en: 'My Recipient Settings' },
   myProfileSubtitle: { zh: '这里决定系统把我的告警邮件发到哪里。', en: 'This decides where my alert emails are delivered.' },
   recipientEmail: { zh: '接收邮箱', en: 'Recipient Email' },
   recipientPlaceholder: { zh: '例如：1789239110@qq.com', en: 'e.g. alerts@example.com' },
-  recipientHint: { zh: '默认使用注册邮箱，你也可以改成值班邮箱、团队邮箱或其他专用收件地址。', en: 'Your registration email is used by default, but you can change it to an on-call inbox, team mailbox, or another dedicated recipient address.' },
+  recipientHint: { zh: '默认使用注册邮箱，你也可以改成值班邮箱、团队邮箱或其他专用收件地址。', en: 'Your registration email is used by default, but you can switch to an on-call inbox, team mailbox, or other dedicated address.' },
   receiveSwitch: { zh: '接收开关', en: 'Delivery Switch' },
   saveMyProfile: { zh: '保存接收设置', en: 'Save Recipient Settings' },
   profileDisabledTitle: { zh: '当前未接收个人告警邮件', en: 'Personal alert email is currently disabled' },
-  profileDisabledDesc: { zh: '即使管理员已配置平台发信邮箱，只要这里关闭，你的账号也不会收到任何告警邮件。', en: 'Even if outbound SMTP is configured by the admin, your account will not receive alert emails while this switch is off.' },
+  profileDisabledDesc: { zh: '即使管理员已配置平台发信邮箱，只要这里关闭，你的账号也不会收到任何告警邮件。', en: 'Even if outbound SMTP is configured, your account will not receive alert emails while this switch is off.' },
   savedProfile: { zh: '接收设置已更新', en: 'Recipient settings updated' },
   saveProfileFailed: { zh: '保存接收设置失败', en: 'Failed to save recipient settings' },
   profileEmailRequired: { zh: '请填写接收邮箱', en: 'Please enter recipient email' },
@@ -260,7 +307,7 @@ const { locale, t } = useI18n({
   smtpPasswordPlaceholder: { zh: '请输入 SMTP 授权码', en: 'Enter SMTP password or app code' },
   smtpPasswordKeep: { zh: '留空表示保持原授权码', en: 'Leave blank to keep the current secret' },
   fromAddress: { zh: '发件地址', en: 'From Address' },
-  fromAddressPlaceholder: { zh: '默认可与发件邮箱一致', en: 'Usually same as sender account' },
+  fromAddressPlaceholder: { zh: '默认可与发件邮箱一致', en: 'Usually the same as sender account' },
   fromName: { zh: '发件人名称', en: 'From Name' },
   fromNamePlaceholder: { zh: '例如：AIOps Monitor', en: 'e.g. AIOps Monitor' },
   smtpSecurity: { zh: '安全选项', en: 'Security' },
@@ -551,13 +598,144 @@ onMounted(loadAll)
 </script>
 
 <style scoped>
-.compact-head {
-  align-items: flex-start;
-  gap: 1rem;
+.notification-page {
+  gap: 20px;
 }
 
-.section-divider {
-  height: 1px;
+.notification-hero {
+  background: radial-gradient(760px 220px at 0 0, rgba(34, 197, 94, 0.12), transparent 60%), var(--hero-bg);
+}
+
+.notification-kpi-grid {
+  gap: 14px;
+}
+
+.notification-kpi {
+  min-height: 112px;
+}
+
+.notification-main-card {
+  padding: 20px;
+}
+
+.notification-head {
+  margin-bottom: 18px;
+}
+
+.notification-tabs :deep(.el-tabs__header) {
+  margin: 0 0 20px;
+}
+
+.notification-tabs :deep(.el-tabs__nav-wrap::after) {
   background: rgba(148, 163, 184, 0.16);
+}
+
+.notification-tabs :deep(.el-tabs__item) {
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 12px 12px 0 0;
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.notification-tabs :deep(.el-tabs__item.is-active) {
+  color: var(--text-1);
+}
+
+.notification-tabs :deep(.el-tabs__active-bar) {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--brand), rgba(34, 197, 94, 0.9));
+}
+
+.notification-section-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.card-panel-inner {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel-soft);
+  padding: 20px;
+}
+
+.notification-form-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.notification-form-columns.two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.form-helper-box {
+  margin-top: -8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px dashed var(--line);
+  background: rgba(56, 189, 248, 0.05);
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.switch-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.notification-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.notification-table-wrap {
+  padding: 0;
+}
+
+.notification-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.webhook-url-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--text-1);
+  word-break: break-all;
+}
+
+.webhook-error-text {
+  font-size: 12px;
+  color: #fda4af;
+}
+
+@media (max-width: 900px) {
+  .notification-form-columns.two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .notification-main-card,
+  .card-panel-inner {
+    padding: 16px;
+  }
+
+  .notification-actions {
+    justify-content: stretch;
+  }
+
+  .notification-actions :deep(.el-button) {
+    width: 100%;
+  }
 }
 </style>

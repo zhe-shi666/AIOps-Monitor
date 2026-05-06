@@ -1,6 +1,6 @@
 <template>
-  <div class="page-surface">
-    <header class="page-hero">
+  <div class="page-surface workbench-page">
+    <header class="page-hero workbench-hero">
       <div>
         <h1>{{ t('title') }}</h1>
         <p>{{ t('subtitle') }}</p>
@@ -12,7 +12,7 @@
       </div>
     </header>
 
-    <section class="kpi-grid">
+    <section class="kpi-grid workbench-kpi-grid">
       <div class="kpi-item">
         <p class="kpi-label">{{ t('openIncidents') }}</p>
         <p class="kpi-value text-rose-300">{{ openIncidents }}</p>
@@ -32,15 +32,17 @@
     </section>
 
     <section class="workbench-grid">
-      <div class="card-panel table-wrap ops-table workbench-col workbench-left">
-        <div class="section-head">
+      <div class="card-panel workbench-col workbench-left workbench-lane-card">
+        <div class="section-head workbench-section-head">
           <div>
             <h2 class="section-title">{{ t('incidentLane') }}</h2>
             <p class="section-subtitle">{{ t('incidentLaneDesc') }}</p>
           </div>
+          <el-tag effect="plain" type="info">{{ t('currentVisible') }} {{ displayedIncidents.length }}</el-tag>
         </div>
 
-        <div class="workbench-filters">
+        <div class="workbench-filter-shell">
+          <div class="workbench-filters">
           <el-select v-model="filters.status" clearable :placeholder="t('status')" @change="reloadIncidents">
             <el-option label="OPEN" value="OPEN" />
             <el-option label="ACKNOWLEDGED" value="ACKNOWLEDGED" />
@@ -58,9 +60,11 @@
             :active-text="t('dedupOn')"
             :inactive-text="t('dedupOff')" />
           <el-button type="primary" @click="reloadIncidents">{{ t('query') }}</el-button>
+          </div>
         </div>
 
-        <el-table
+        <div class="ops-table table-wrap workbench-table-wrap">
+          <el-table
           :data="displayedIncidents"
           v-loading="loadingIncidents"
           height="100%"
@@ -89,7 +93,8 @@
               </div>
             </template>
           </el-table-column>
-        </el-table>
+          </el-table>
+        </div>
 
         <div class="workbench-pagination">
           <el-pagination
@@ -101,12 +106,13 @@
         </div>
       </div>
 
-      <div class="card-panel table-wrap workbench-col workbench-right">
-        <div class="section-head">
+      <div class="card-panel workbench-col workbench-right workbench-detail-card">
+        <div class="section-head workbench-section-head">
           <div>
             <h2 class="section-title">{{ t('investigationPanel') }}</h2>
             <p class="section-subtitle">{{ t('investigationPanelDesc') }}</p>
           </div>
+          <div v-if="!canOperate" class="readonly-tip">{{ readOnlyReason }}</div>
         </div>
 
         <div v-if="selectedIncidentPanel" class="panel-body">
@@ -256,10 +262,21 @@
       :title="t('deliveryTitle')"
       width="980px"
       destroy-on-close>
-      <div class="mb-3 text-xs text-slate-500">
-        {{ t('incidentNo') }} #{{ selectedIncident?.id || '-' }} · {{ selectedIncident?.metricName || '-' }} · {{ selectedIncident?.hostname || '-' }}
+      <div class="delivery-dialog-head">
+        <div>
+          <p class="delivery-dialog-label">{{ t('incidentNo') }}</p>
+          <strong>#{{ selectedIncident?.id || '-' }}</strong>
+        </div>
+        <div>
+          <p class="delivery-dialog-label">{{ t('metric') }}</p>
+          <strong>{{ selectedIncident?.metricName || '-' }}</strong>
+        </div>
+        <div>
+          <p class="delivery-dialog-label">{{ t('hostname') }}</p>
+          <strong>{{ selectedIncident?.hostname || '-' }}</strong>
+        </div>
       </div>
-      <div class="ops-table">
+      <div class="ops-table table-wrap workbench-table-wrap">
         <el-table :data="deliveryRecords" v-loading="deliveryLoading">
           <el-table-column prop="channelName" :label="t('channelName')" width="160" />
           <el-table-column prop="status" :label="t('result')" width="120">
@@ -332,7 +349,7 @@ const filters = reactive({
 
 const { locale, t } = useI18n({
   title: { zh: '事件工作台', en: 'Event Workbench' },
-  subtitle: { zh: '左侧处理告警，右侧聚焦调查详情与执行入口', en: 'Handle incidents on the left and focus investigation details on the right' },
+  subtitle: { zh: '以主次布局承接告警处置、证据查看和调查联动。', en: 'Use a primary-secondary layout for incident handling, evidence review, and investigation orchestration.' },
   refresh: { zh: '刷新', en: 'Refresh' },
   openIncidents: { zh: '待处理告警', en: 'Open Incidents' },
   ackedIncidents: { zh: '已确认告警', en: 'Acknowledged Incidents' },
@@ -392,7 +409,8 @@ const { locale, t } = useI18n({
   investigationCreated: { zh: '调查已创建，已跳转 AI 专家', en: 'Investigation created and opened in AI Expert' },
   investigationCreateFailed: { zh: '创建调查失败', en: 'Failed to create investigation' },
   loadDeliveryFailed: { zh: '加载投递记录失败', en: 'Failed to load delivery records' },
-  loadContextFailed: { zh: '加载证据上下文失败', en: 'Failed to load evidence context' }
+  loadContextFailed: { zh: '加载证据上下文失败', en: 'Failed to load evidence context' },
+  currentVisible: { zh: '当前可见：', en: 'Visible:' }
 })
 
 const displayedIncidents = computed(() => {
@@ -679,31 +697,56 @@ onMounted(refreshAll)
 </script>
 
 <style scoped>
+.workbench-page {
+  gap: 20px;
+}
+
+.workbench-hero {
+  background: radial-gradient(780px 220px at 0 0, rgba(244, 114, 182, 0.12), transparent 60%), var(--hero-bg);
+}
+
+.workbench-kpi-grid {
+  gap: 14px;
+}
+
 .workbench-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
+  gap: 18px;
 }
 
 .workbench-col {
   min-height: 520px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+  padding: 20px;
 }
 
-.workbench-left {
+.workbench-lane-card,
+.workbench-detail-card {
   min-width: 0;
 }
 
-.workbench-right {
-  min-width: 0;
+.workbench-section-head {
+  margin-bottom: 0;
+}
+
+.workbench-filter-shell {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--panel-soft);
 }
 
 .workbench-filters {
   display: grid;
   grid-template-columns: repeat(5, minmax(110px, 1fr));
   gap: 10px;
+}
+
+.workbench-table-wrap {
+  padding: 0;
 }
 
 .message-cell {
@@ -714,15 +757,16 @@ onMounted(refreshAll)
 }
 
 .workbench-pagination {
-  margin-top: 12px;
+  margin-top: auto;
   display: flex;
   justify-content: flex-end;
+  padding-top: 16px;
 }
 
 .panel-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   min-height: 0;
 }
 
@@ -730,7 +774,11 @@ onMounted(refreshAll)
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 10px;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--panel-soft);
 }
 
 .panel-title {
@@ -748,7 +796,7 @@ onMounted(refreshAll)
 
 .incident-note {
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 
@@ -756,6 +804,16 @@ onMounted(refreshAll)
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.readonly-tip {
+  max-width: 320px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: var(--text-3);
+  font-size: 12px;
 }
 
 .panel-section-title {
@@ -776,16 +834,16 @@ onMounted(refreshAll)
 .context-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 10px;
 }
 
 .context-card,
 .context-list div {
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--panel-soft);
-  padding: 10px;
+  padding: 12px;
 }
 
 .context-card span,
@@ -812,13 +870,13 @@ onMounted(refreshAll)
 
 .compact-empty {
   min-height: auto;
-  padding: 8px 10px;
+  padding: 10px 12px;
 }
 
 .investigation-card {
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px 12px;
+  border-radius: 14px;
+  padding: 12px 14px;
   background: var(--panel-soft);
 }
 
@@ -833,15 +891,15 @@ onMounted(refreshAll)
   margin: 8px 0 0;
   color: var(--text-2);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.55;
   white-space: pre-wrap;
 }
 
 .investigation-empty {
   border: 1px dashed var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--panel-soft);
-  padding: 12px;
+  padding: 14px;
   color: var(--text-3);
   font-size: 12px;
   display: flex;
@@ -851,7 +909,7 @@ onMounted(refreshAll)
 }
 
 .panel-empty-state {
-  min-height: 280px;
+  min-height: 320px;
   justify-content: center;
 }
 
@@ -864,12 +922,12 @@ onMounted(refreshAll)
 .recent-item {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--panel-soft);
   color: var(--text-2);
   font-size: 12px;
   text-align: left;
-  padding: 8px 10px;
+  padding: 10px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -882,13 +940,37 @@ onMounted(refreshAll)
   background: var(--panel);
 }
 
+.delivery-dialog-head {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.delivery-dialog-head > div {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel-soft);
+}
+
+.delivery-dialog-label {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.delivery-dialog-head strong {
+  color: var(--text-1);
+}
+
 :deep(.is-selected-incident-row > td) {
   background: rgba(14, 165, 233, 0.12) !important;
 }
 
 @media (min-width: 1480px) {
   .workbench-grid {
-    grid-template-columns: 1.28fr 0.72fr;
+    grid-template-columns: 1.26fr 0.74fr;
     align-items: stretch;
   }
 }
@@ -905,6 +987,10 @@ onMounted(refreshAll)
   .investigation-empty {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .delivery-dialog-head {
+    grid-template-columns: 1fr;
   }
 }
 </style>

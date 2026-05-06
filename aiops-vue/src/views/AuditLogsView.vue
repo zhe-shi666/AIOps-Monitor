@@ -23,52 +23,70 @@
       </div>
     </section>
 
-    <section class="card-panel audit-toolbar">
-      <el-input
-        v-model="keyword"
-        clearable
-        :placeholder="t('keywordPlaceholder')"
-        @keyup.enter="resetAndFetch" />
-      <el-select v-model="action" clearable :placeholder="t('action')" @change="resetAndFetch">
-        <el-option v-for="item in actionOptions" :key="item" :label="item" :value="item" />
-      </el-select>
-      <el-select v-model="resourceType" clearable :placeholder="t('resourceType')" @change="resetAndFetch">
-        <el-option label="MONITOR_TARGET" value="MONITOR_TARGET" />
-        <el-option label="USER" value="USER" />
-      </el-select>
-      <el-button type="primary" @click="resetAndFetch">{{ t('search') }}</el-button>
+    <section class="card-panel audit-toolbar-card">
+      <div class="section-head audit-section-head">
+        <div>
+          <h2 class="section-title">{{ t('filterTitle') }}</h2>
+          <p class="section-subtitle">{{ t('filterSubtitle') }}</p>
+        </div>
+      </div>
+
+      <div class="audit-toolbar">
+        <el-input
+          v-model="keyword"
+          clearable
+          :placeholder="t('keywordPlaceholder')"
+          @keyup.enter="resetAndFetch" />
+        <el-select v-model="action" clearable :placeholder="t('action')" @change="resetAndFetch">
+          <el-option v-for="item in actionOptions" :key="item" :label="item" :value="item" />
+        </el-select>
+        <el-select v-model="resourceType" clearable :placeholder="t('resourceType')" @change="resetAndFetch">
+          <el-option label="MONITOR_TARGET" value="MONITOR_TARGET" />
+          <el-option label="USER" value="USER" />
+        </el-select>
+        <el-button type="primary" @click="resetAndFetch">{{ t('search') }}</el-button>
+      </div>
     </section>
 
-    <section class="card-panel table-wrap ops-table">
-      <el-table :data="logs" v-loading="loading" style="width: 100%;">
-        <el-table-column prop="createdAt" :label="t('time')" min-width="170">
-          <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
-        </el-table-column>
-        <el-table-column prop="actor" :label="t('actor')" min-width="130">
-          <template #default="{ row }">
-            <strong>{{ row.actor || '-' }}</strong>
-            <p class="audit-muted">UID {{ row.userId || '-' }}</p>
-          </template>
-        </el-table-column>
-        <el-table-column prop="action" :label="t('action')" min-width="180">
-          <template #default="{ row }">
-            <el-tag :type="actionTone(row.action)" size="small">{{ row.action }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="resourceType" :label="t('resource')" min-width="160">
-          <template #default="{ row }">
-            <span>{{ row.resourceType || '-' }}</span>
-            <p class="audit-muted">#{{ row.resourceId || '-' }}</p>
-          </template>
-        </el-table-column>
-        <el-table-column prop="ipAddress" :label="t('ip')" min-width="130" />
-        <el-table-column prop="detailJson" :label="t('detail')" min-width="260">
-          <template #default="{ row }">
-            <pre class="audit-detail">{{ formatDetail(row.detailJson) }}</pre>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-empty v-if="!loading && !logs.length" :description="t('empty')" />
+    <section class="card-panel audit-table-card">
+      <div class="section-head audit-section-head">
+        <div>
+          <h2 class="section-title">{{ t('tableTitle') }}</h2>
+          <p class="section-subtitle">{{ t('tableSubtitle') }}</p>
+        </div>
+      </div>
+
+      <div class="table-wrap ops-table audit-table-wrap">
+        <el-table :data="logs" v-loading="loading" style="width: 100%;">
+          <el-table-column prop="createdAt" :label="t('time')" min-width="170">
+            <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
+          </el-table-column>
+          <el-table-column prop="actor" :label="t('actor')" min-width="130">
+            <template #default="{ row }">
+              <strong>{{ row.actor || '-' }}</strong>
+              <p class="audit-muted">UID {{ row.userId || '-' }}</p>
+            </template>
+          </el-table-column>
+          <el-table-column prop="action" :label="t('action')" min-width="180">
+            <template #default="{ row }">
+              <el-tag :type="actionTone(row.action)" size="small">{{ row.action }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="resourceType" :label="t('resource')" min-width="160">
+            <template #default="{ row }">
+              <span>{{ row.resourceType || '-' }}</span>
+              <p class="audit-muted">#{{ row.resourceId || '-' }}</p>
+            </template>
+          </el-table-column>
+          <el-table-column prop="ipAddress" :label="t('ip')" min-width="130" />
+          <el-table-column prop="detailJson" :label="t('detail')" min-width="260">
+            <template #default="{ row }">
+              <pre class="audit-detail">{{ formatDetail(row.detailJson) }}</pre>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-empty v-if="!loading && !logs.length" :description="t('empty')" />
+      </div>
     </section>
 
     <div class="audit-pagination">
@@ -114,6 +132,10 @@ const { locale, t } = useI18n({
   action: { zh: '动作', en: 'Action' },
   resourceType: { zh: '资源类型', en: 'Resource Type' },
   search: { zh: '筛选', en: 'Filter' },
+  filterTitle: { zh: '筛选条件', en: 'Filter Conditions' },
+  filterSubtitle: { zh: '按动作、资源类型和关键字快速定位审计记录。', en: 'Filter audit records by action, resource type, and keyword.' },
+  tableTitle: { zh: '审计记录', en: 'Audit Records' },
+  tableSubtitle: { zh: '统一查看关键操作留痕，便于问题追踪与合规审查。', en: 'Review operational traces for incident tracking and compliance review.' },
   time: { zh: '时间', en: 'Time' },
   actor: { zh: '操作者', en: 'Actor' },
   resource: { zh: '资源', en: 'Resource' },
@@ -187,10 +209,14 @@ onMounted(fetchLogs)
 .audit-hero { background: radial-gradient(900px 240px at 0 0, rgba(14, 165, 233, 0.18), transparent 60%), var(--hero-bg); }
 .audit-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .kpi-value.compact { font-size: 22px; }
-.audit-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) 180px 180px auto; gap: 10px; align-items: center; }
+.audit-toolbar-card,
+.audit-table-card { padding: 22px; }
+.audit-section-head { margin-bottom: 18px; }
+.audit-toolbar { display: grid; grid-template-columns: minmax(280px, 1.2fr) 200px 200px auto; gap: 12px; align-items: center; }
+.audit-table-wrap { border-radius: 18px; overflow: hidden; }
 .audit-muted { margin: 4px 0 0; color: var(--text-3); font-size: 12px; }
 .audit-detail { margin: 0; max-height: 92px; overflow: auto; white-space: pre-wrap; word-break: break-word; color: var(--code-text); font-size: 12px; line-height: 1.45; }
-.audit-pagination { display: flex; justify-content: flex-end; }
+.audit-pagination { display: flex; justify-content: flex-end; padding-top: 18px; }
 @media (max-width: 900px) {
   .audit-grid, .audit-toolbar { grid-template-columns: 1fr; }
 }
