@@ -6,12 +6,6 @@
 
 **AIOps-Monitor** 是一款将传统实时监控与大语言模型（LLM）相结合的智能化运维平台。它不仅能秒级感知服务器硬件波动，更能通过 AI 实现异常告警的自动化根因分析。
 
----
-
-## 📸 项目演示
-![GitHub图像](/photo/shizhe.png)
----
-
 ## 🛠️ 技术架构 (Architecture)
 
 1. **核心框架**：Spring Boot 3.x

@@ -107,7 +107,7 @@ class InvestigationControllerWebMvcTest {
 
     @Test
     void shouldReturnInvestigationPage() throws Exception {
-        User user = buildUser(1L, "linx");
+        User user = buildUser(1L, "demo-user");
         AiInvestigation investigation = new AiInvestigation();
         investigation.setId(101L);
         investigation.setStatus("COLLECTING");

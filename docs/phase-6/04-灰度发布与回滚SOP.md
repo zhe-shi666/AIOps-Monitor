@@ -10,7 +10,7 @@
 ## 2. 灰度门禁命令
 
 ```bash
-cd /Users/linx/Documents/lth/AIOps-Monitor
+cd /path/to/AIOps-Monitor
 
 STABLE_API_BASE_URL=http://localhost:8080 \
 CANARY_API_BASE_URL=http://localhost:8081 \
@@ -34,7 +34,7 @@ bash tools/phase-6/release/canary-check.sh
 ## 4. 快速回滚命令
 
 ```bash
-cd /Users/linx/Documents/lth/AIOps-Monitor
+cd /path/to/AIOps-Monitor
 
 STABLE_API_BASE_URL=http://localhost:8080 \
 USERNAME=admin PASSWORD=123456 \

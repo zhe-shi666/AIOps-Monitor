@@ -13,7 +13,7 @@
 ## 3. 演练命令
 
 ```bash
-cd /Users/linx/Documents/lth/AIOps-Monitor
+cd /path/to/AIOps-Monitor
 
 # Redis
 USERNAME=admin PASSWORD=123456 AUTO_REGISTER=true \

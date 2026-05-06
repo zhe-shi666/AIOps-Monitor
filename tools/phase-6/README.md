@@ -14,7 +14,7 @@
 ## 快速开始
 
 ```bash
-cd /Users/linx/Documents/lth/AIOps-Monitor
+cd /path/to/AIOps-Monitor
 
 # 1) 一键跑烟测 + 压测
 USERNAME=admin PASSWORD=123456 AUTO_REGISTER=true \
