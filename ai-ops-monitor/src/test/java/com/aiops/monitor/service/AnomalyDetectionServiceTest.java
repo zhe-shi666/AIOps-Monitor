@@ -42,7 +42,6 @@ class AnomalyDetectionServiceTest {
     void shouldDetectCpuAnomalyAndPublishEvent() {
         SystemMetricsHistory sample = new SystemMetricsHistory();
         sample.setId(1001L);
-        sample.setUserId(10L);
         sample.setTargetId(20L);
         sample.setHostname("host-a");
         sample.setCpuUsage(95.0d);
@@ -57,9 +56,9 @@ class AnomalyDetectionServiceTest {
             history.add(row);
         }
 
-        when(systemMetricsRepository.findTop80ByUserIdAndTargetIdOrderByTimestampDesc(10L, 20L)).thenReturn(history);
-        when(anomalyResultRepository.findFirstByUserIdAndTargetIdAndMetricKeyAndStatusOrderByDetectedAtDesc(
-                10L, 20L, "CPU", "OPEN")).thenReturn(Optional.empty());
+        when(systemMetricsRepository.findTop80ByTargetIdOrderByTimestampDesc(20L)).thenReturn(history);
+        when(anomalyResultRepository.findFirstByTargetIdAndMetricKeyAndStatusOrderByDetectedAtDesc(
+                20L, "CPU", "OPEN")).thenReturn(Optional.empty());
         when(anomalyResultRepository.save(any(AnomalyResult.class))).thenAnswer(invocation -> {
             AnomalyResult result = invocation.getArgument(0);
             if (result.getId() == null) {

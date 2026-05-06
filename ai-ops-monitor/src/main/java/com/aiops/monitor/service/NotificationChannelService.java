@@ -21,7 +21,10 @@ public class NotificationChannelService {
     private final NotificationChannelRepository notificationChannelRepository;
 
     public List<NotificationChannel> listByUserId(Long userId) {
-        return notificationChannelRepository.findByUserIdOrderByIdDesc(userId);
+        return notificationChannelRepository.findByUserIdOrderByIdDesc(userId)
+                .stream()
+                .filter(channel -> "WEBHOOK".equalsIgnoreCase(channel.getType()))
+                .toList();
     }
 
     public NotificationChannel create(Long userId, NotificationChannelRequest request) {
@@ -52,6 +55,10 @@ public class NotificationChannelService {
         notificationChannelRepository.delete(channel);
     }
 
+    public NotificationChannel requireOwnedChannel(Long userId, Long id) {
+        return requireByIdAndUserId(id, userId);
+    }
+
     private NotificationChannel requireByIdAndUserId(Long id, Long userId) {
         return notificationChannelRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "通知通道不存在"));
@@ -59,17 +66,19 @@ public class NotificationChannelService {
 
     private void apply(NotificationChannelRequest request, NotificationChannel channel, boolean updateMode) {
         String type = normalizeUpper(request.getType());
-        if (!"WEBHOOK".equals(type)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "当前仅支持 WEBHOOK 类型");
-        }
-
         String name = normalize(request.getName());
-        String webhookUrl = normalize(request.getWebhookUrl());
-        validateWebhookUrl(webhookUrl);
+
+        if (!"WEBHOOK".equals(type)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "通知通道仅保留 WEBHOOK；邮件接收请在个人通知设置中配置");
+        }
 
         channel.setType(type);
         channel.setName(name);
+        String webhookUrl = normalize(request.getWebhookUrl());
+        validateWebhookUrl(webhookUrl);
         channel.setWebhookUrl(webhookUrl);
+        channel.setEmailTo(null);
+
         if (!updateMode || request.getSecret() != null) {
             channel.setSecret(normalizeNullable(request.getSecret()));
         }

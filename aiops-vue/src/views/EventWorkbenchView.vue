@@ -126,16 +126,16 @@
           </div>
 
           <div class="panel-actions">
-            <el-button size="small" @click="setIncidentStatus(selectedIncidentPanel, 'ACKNOWLEDGED')" :disabled="selectedIncidentPanel.status === 'ACKNOWLEDGED'">
+            <el-button size="small" @click="setIncidentStatus(selectedIncidentPanel, 'ACKNOWLEDGED')" :disabled="!canOperate || selectedIncidentPanel.status === 'ACKNOWLEDGED'">
               {{ t('ack') }}
             </el-button>
-            <el-button size="small" type="success" @click="setIncidentStatus(selectedIncidentPanel, 'RESOLVED')" :disabled="selectedIncidentPanel.status === 'RESOLVED'">
+            <el-button size="small" type="success" @click="setIncidentStatus(selectedIncidentPanel, 'RESOLVED')" :disabled="!canOperate || selectedIncidentPanel.status === 'RESOLVED'">
               {{ t('resolve') }}
             </el-button>
-            <el-button size="small" type="info" @click="setIncidentStatus(selectedIncidentPanel, 'OPEN')" :disabled="selectedIncidentPanel.status === 'OPEN'">
+            <el-button size="small" type="info" @click="setIncidentStatus(selectedIncidentPanel, 'OPEN')" :disabled="!canOperate || selectedIncidentPanel.status === 'OPEN'">
               {{ t('reopen') }}
             </el-button>
-            <el-button size="small" type="primary" plain :loading="investigatingIncidentId === selectedIncidentPanel.id" @click="investigateIncident(selectedIncidentPanel)">
+            <el-button size="small" type="primary" plain :disabled="!canOperate" :loading="investigatingIncidentId === selectedIncidentPanel.id" @click="investigateIncident(selectedIncidentPanel)">
               {{ resolveInvestigateLabel(selectedIncidentPanel) }}
             </el-button>
             <el-button size="small" text type="primary" @click="openDeliveries(selectedIncidentPanel)">
@@ -218,7 +218,7 @@
 
             <div v-else class="investigation-empty">
               <p>{{ t('noRelatedInvestigation') }}</p>
-              <el-button size="small" type="primary" plain :loading="investigatingIncidentId === selectedIncidentPanel.id" @click="investigateIncident(selectedIncidentPanel)">
+              <el-button size="small" type="primary" plain :disabled="!canOperate" :loading="investigatingIncidentId === selectedIncidentPanel.id" @click="investigateIncident(selectedIncidentPanel)">
                 {{ t('createInvestigation') }}
               </el-button>
             </div>
@@ -296,8 +296,10 @@ import { ElMessage } from 'element-plus'
 import { getIncidentContext, getIncidentDeliveries, getIncidents, updateIncidentStatus } from '../api/incidents'
 import { createInvestigation, getInvestigations } from '../api/investigations'
 import { useI18n } from '../composables/useI18n'
+import { usePermissions } from '../composables/usePermissions'
 
 const router = useRouter()
+const { canOperate, readOnlyReason } = usePermissions()
 const loadingIncidents = ref(false)
 const loadingInvestigations = ref(false)
 const investigatingIncidentId = ref(null)
@@ -585,6 +587,10 @@ function reloadIncidents() {
 }
 
 async function setIncidentStatus(row, status) {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   try {
     const ids = incidentIdsOf(row)
     await Promise.all(ids.map((id) => updateIncidentStatus(id, status)))
@@ -611,6 +617,10 @@ async function fetchContext(row) {
 }
 
 async function investigateIncident(row) {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   const existing = findRelatedInvestigation(row)
   if (existing?.id) {
     openInAiExpert(existing.id)

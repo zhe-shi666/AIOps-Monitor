@@ -4,6 +4,7 @@ import com.aiops.monitor.model.dto.ThresholdUpdateRequest;
 import com.aiops.monitor.model.entity.AlertThresholdConfig;
 import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.service.CurrentUserService;
+import com.aiops.monitor.service.RoleGuardService;
 import com.aiops.monitor.service.ThresholdConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class ThresholdConfigController {
 
     private final ThresholdConfigService thresholdConfigService;
     private final CurrentUserService currentUserService;
+    private final RoleGuardService roleGuardService;
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> getThresholds(Authentication authentication) {
@@ -36,6 +38,7 @@ public class ThresholdConfigController {
     public ResponseEntity<Map<String, Object>> updateThresholds(@Valid @RequestBody ThresholdUpdateRequest request,
                                                                 Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireOperator(user);
         AlertThresholdConfig config = thresholdConfigService.update(
                 user.getId(),
                 request.getCpuThreshold(),

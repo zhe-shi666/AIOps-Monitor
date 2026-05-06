@@ -23,8 +23,11 @@ public class NotificationChannel {
     @Column(nullable = false, length = 20)
     private String type = "WEBHOOK";
 
-    @Column(name = "webhook_url", nullable = false, length = 500)
+    @Column(name = "webhook_url", length = 500)
     private String webhookUrl;
+
+    @Column(name = "email_to", length = 255)
+    private String emailTo;
 
     @Column(length = 255)
     private String secret;

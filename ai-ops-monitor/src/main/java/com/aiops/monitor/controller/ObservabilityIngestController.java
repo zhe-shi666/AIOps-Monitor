@@ -45,7 +45,7 @@ public class ObservabilityIngestController {
 
         for (AgentLogItem item : request.getLogs()) {
             LogRecord record = new LogRecord();
-            record.setUserId(target.getUserId());
+            record.setUserId(null);
             record.setTargetId(target.getId());
             record.setHostname(effectiveHost);
             record.setServiceName(notBlank(request.getServiceName()) ? request.getServiceName() : target.getName());
@@ -79,7 +79,7 @@ public class ObservabilityIngestController {
 
         for (AgentTraceSpanItem item : request.getTraces()) {
             TraceSpan span = new TraceSpan();
-            span.setUserId(target.getUserId());
+            span.setUserId(null);
             span.setTargetId(target.getId());
             span.setHostname(effectiveHost);
             span.setServiceName(notBlank(request.getServiceName()) ? request.getServiceName() : target.getName());

@@ -30,12 +30,24 @@ public class User implements UserDetails {
     @Column(unique = true, nullable = false, length = 100)
     private String email;
 
+    @Column(name = "notification_email", length = 255)
+    private String notificationEmail;
+
+    @Column(name = "notification_enabled", nullable = false)
+    private boolean notificationEnabled = false;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role = Role.USER;
 
     @Column(nullable = false)
     private boolean enabled = true;
+
+    @Column(name = "password_change_required", nullable = false)
+    private boolean passwordChangeRequired = false;
+
+    @Column(name = "temporary_password_issued_at")
+    private LocalDateTime temporaryPasswordIssuedAt;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();

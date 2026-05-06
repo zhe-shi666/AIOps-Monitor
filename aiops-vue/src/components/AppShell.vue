@@ -86,7 +86,18 @@
 
       <div class="shell-body">
         <main class="shell-content">
-          <router-view />
+          <router-view v-slot="{ Component, route: currentRoute }">
+            <KeepAlive include="DashboardView">
+              <component
+                :is="Component"
+                v-if="currentRoute.path === '/'"
+                :key="currentRoute.path" />
+            </KeepAlive>
+            <component
+              :is="Component"
+              v-if="currentRoute.path !== '/'"
+              :key="currentRoute.path" />
+          </router-view>
         </main>
       </div>
     </div>
@@ -94,12 +105,13 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { KeepAlive, computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useTheme } from '../composables/useTheme'
 import { useLocaleMode } from '../composables/useLocaleMode'
 import { useI18n } from '../composables/useI18n'
+import { usePermissions } from '../composables/usePermissions'
 
 const route = useRoute()
 const router = useRouter()
@@ -107,6 +119,7 @@ const auth = useAuthStore()
 const mobileNavOpen = ref(false)
 const { theme, toggleTheme } = useTheme()
 const { locale, toggleLocale } = useLocaleMode()
+const { canConfigurePlatform, canAudit } = usePermissions()
 const { isZh, t } = useI18n({
   'group.monitor': { zh: '监控', en: 'Monitor' },
   'group.settings': { zh: '设置', en: 'Settings' },
@@ -140,10 +153,12 @@ const monitorNav = computed(() => [
 ])
 
 const settingNav = computed(() => [
-  { path: '/settings/thresholds', label: t('nav.thresholds') },
-  { path: '/settings/escalation', label: t('nav.escalation') },
   { path: '/settings/notifications', label: t('nav.notifications') },
-  { path: '/audit-logs', label: t('nav.audit') }
+  ...(canConfigurePlatform.value ? [
+    { path: '/settings/thresholds', label: t('nav.thresholds') },
+    { path: '/settings/escalation', label: t('nav.escalation') }
+  ] : []),
+  ...(canAudit.value ? [{ path: '/audit-logs', label: t('nav.audit') }] : [])
 ])
 
 const headerMap = computed(() => ({

@@ -40,7 +40,6 @@ public class AnomalyController {
         User user = currentUserService.requireUser(authentication);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("detectedAt").descending());
         Page<AnomalyResult> result = anomalyResultRepository.search(
-                user.getId(),
                 normalizeUpper(status),
                 normalizeUpper(metricKey),
                 targetId,

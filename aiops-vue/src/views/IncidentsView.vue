@@ -62,13 +62,13 @@
         <el-table-column :label="t('actions')" width="300" fixed="right">
           <template #default="{ row }">
             <div class="flex items-center gap-2">
-              <el-button size="small" :disabled="row.status === 'ACKNOWLEDGED'" @click="setStatus(row, 'ACKNOWLEDGED')">
+              <el-button size="small" :disabled="!canOperate || row.status === 'ACKNOWLEDGED'" @click="setStatus(row, 'ACKNOWLEDGED')">
                 {{ t('ack') }}
               </el-button>
-              <el-button size="small" type="success" :disabled="row.status === 'RESOLVED'" @click="setStatus(row, 'RESOLVED')">
+              <el-button size="small" type="success" :disabled="!canOperate || row.status === 'RESOLVED'" @click="setStatus(row, 'RESOLVED')">
                 {{ t('resolve') }}
               </el-button>
-              <el-button size="small" type="info" :disabled="row.status === 'OPEN'" @click="setStatus(row, 'OPEN')">
+              <el-button size="small" type="info" :disabled="!canOperate || row.status === 'OPEN'" @click="setStatus(row, 'OPEN')">
                 {{ t('reopen') }}
               </el-button>
               <el-button size="small" type="primary" plain @click="openDeliveries(row)">
@@ -135,6 +135,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getIncidentDeliveries, getIncidents, updateIncidentStatus } from '../api/incidents'
 import { useI18n } from '../composables/useI18n'
+import { usePermissions } from '../composables/usePermissions'
 
 const loading = ref(false)
 const incidents = ref([])
@@ -148,6 +149,7 @@ const deliveryPage = ref(1)
 const deliveryPageSize = ref(10)
 const deliveryTotal = ref(0)
 const selectedIncident = ref(null)
+const { canOperate, readOnlyReason } = usePermissions()
 
 const filters = reactive({
   status: '',
@@ -216,6 +218,10 @@ function handleFilterChange() {
 }
 
 async function setStatus(row, status) {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   try {
     const { data } = await updateIncidentStatus(row.id, status)
     row.status = data.status

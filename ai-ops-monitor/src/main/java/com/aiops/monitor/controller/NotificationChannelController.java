@@ -6,6 +6,8 @@ import com.aiops.monitor.model.entity.NotificationChannel;
 import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.service.CurrentUserService;
 import com.aiops.monitor.service.NotificationChannelService;
+import com.aiops.monitor.service.NotificationDispatcherService;
+import com.aiops.monitor.service.RoleGuardService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +25,8 @@ public class NotificationChannelController {
 
     private final NotificationChannelService notificationChannelService;
     private final CurrentUserService currentUserService;
+    private final RoleGuardService roleGuardService;
+    private final NotificationDispatcherService notificationDispatcherService;
 
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> list(Authentication authentication) {
@@ -38,6 +42,7 @@ public class NotificationChannelController {
     public ResponseEntity<Map<String, Object>> create(@Valid @RequestBody NotificationChannelRequest request,
                                                       Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         NotificationChannel channel = notificationChannelService.create(user.getId(), request);
         return ResponseEntity.ok(toView(channel));
     }
@@ -47,6 +52,7 @@ public class NotificationChannelController {
                                                       @Valid @RequestBody NotificationChannelRequest request,
                                                       Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         NotificationChannel channel = notificationChannelService.update(user.getId(), id, request);
         return ResponseEntity.ok(toView(channel));
     }
@@ -56,6 +62,7 @@ public class NotificationChannelController {
                                                            @Valid @RequestBody NotificationChannelEnabledRequest request,
                                                            Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         NotificationChannel channel = notificationChannelService.setEnabled(user.getId(), id, request.getEnabled());
         return ResponseEntity.ok(toView(channel));
     }
@@ -63,8 +70,22 @@ public class NotificationChannelController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         notificationChannelService.delete(user.getId(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/test")
+    public ResponseEntity<Map<String, Object>> test(@PathVariable Long id, Authentication authentication) {
+        User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
+        NotificationChannel channel = notificationChannelService.requireOwnedChannel(user.getId(), id);
+        notificationDispatcherService.dispatchChannelTest(channel, user.getId());
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("message", "测试通知已发送，请检查通知目标与投递审计");
+        response.put("channel", toView(channel));
+        return ResponseEntity.ok(response);
     }
 
     private Map<String, Object> toView(NotificationChannel channel) {
@@ -73,6 +94,7 @@ public class NotificationChannelController {
         view.put("name", channel.getName());
         view.put("type", channel.getType());
         view.put("webhookUrl", channel.getWebhookUrl());
+        view.put("emailTo", channel.getEmailTo());
         view.put("enabled", channel.isEnabled());
         view.put("secretConfigured", channel.getSecret() != null && !channel.getSecret().isBlank());
         view.put("lastNotifiedAt", channel.getLastNotifiedAt());

@@ -48,7 +48,7 @@ const { t } = useI18n({
   subtitle: { zh: '创建账号后即可使用监控、告警、通知与升级策略能力', en: 'Create an account to use monitoring, incidents, channels and escalation features' },
   usernamePlaceholder: { zh: '用户名（3-50字符）', en: 'Username (3-50 chars)' },
   emailPlaceholder: { zh: '邮箱', en: 'Email' },
-  passwordPlaceholder: { zh: '密码（至少6位）', en: 'Password (min 6 chars)' },
+  passwordPlaceholder: { zh: '密码（至少10位，含大小写/数字/特殊字符）', en: 'Password (10+ chars with cases, digit and symbol)' },
   register: { zh: '注册', en: 'Register' },
   hasAccount: { zh: '已有账号？', en: 'Already have an account?' },
   loginNow: { zh: '立即登录', en: 'Sign in now' },
@@ -57,7 +57,7 @@ const { t } = useI18n({
   emailRequired: { zh: '请输入邮箱', en: 'Please enter email' },
   emailInvalid: { zh: '邮箱格式不正确', en: 'Invalid email format' },
   passwordRequired: { zh: '请输入密码', en: 'Please enter password' },
-  passwordLength: { zh: '密码至少6位', en: 'Password must be at least 6 characters' },
+  passwordLength: { zh: '密码至少10位', en: 'Password must be at least 10 characters' },
   registerSuccess: { zh: '注册成功，请登录', en: 'Registration successful, please sign in' },
   registerFailed: { zh: '注册失败', en: 'Registration failed' }
 })
@@ -73,7 +73,7 @@ const rules = computed(() => ({
   ],
   password: [
     { required: true, message: t('passwordRequired'), trigger: 'blur' },
-    { min: 6, message: t('passwordLength'), trigger: 'blur' }
+    { min: 10, message: t('passwordLength'), trigger: 'blur' }
   ]
 }))
 

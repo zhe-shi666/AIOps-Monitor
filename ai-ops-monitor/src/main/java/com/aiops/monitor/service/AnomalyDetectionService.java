@@ -27,11 +27,11 @@ public class AnomalyDetectionService {
     private final MetricsPublisher metricsPublisher;
 
     public List<AnomalyResult> detectAndPersist(SystemMetricsHistory sample) {
-        if (sample == null || sample.getUserId() == null || sample.getTargetId() == null) {
+        if (sample == null || sample.getTargetId() == null) {
             return List.of();
         }
         List<SystemMetricsHistory> history = systemMetricsRepository
-                .findTop80ByUserIdAndTargetIdOrderByTimestampDesc(sample.getUserId(), sample.getTargetId());
+                .findTop80ByTargetIdOrderByTimestampDesc(sample.getTargetId());
         if (history.size() < MIN_BASELINE_POINTS) {
             return List.of();
         }
@@ -97,8 +97,7 @@ public class AnomalyDetectionService {
 
         LocalDateTime now = LocalDateTime.now();
         AnomalyResult existing = anomalyResultRepository
-                .findFirstByUserIdAndTargetIdAndMetricKeyAndStatusOrderByDetectedAtDesc(
-                        sample.getUserId(),
+                .findFirstByTargetIdAndMetricKeyAndStatusOrderByDetectedAtDesc(
                         sample.getTargetId(),
                         metricKey,
                         "OPEN"

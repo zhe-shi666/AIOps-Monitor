@@ -16,14 +16,12 @@ public interface TraceSpanRepository extends JpaRepository<TraceSpan, Long> {
 
     @Query("""
             SELECT t FROM TraceSpan t
-            WHERE t.userId = :userId
-              AND t.startedAt >= :startAt
+            WHERE t.startedAt >= :startAt
               AND (:targetId IS NULL OR t.targetId = :targetId)
               AND (:hostname IS NULL OR t.hostname = :hostname)
             ORDER BY t.startedAt DESC
             """)
-    List<TraceSpan> findIncidentContext(@Param("userId") Long userId,
-                                        @Param("targetId") Long targetId,
+    List<TraceSpan> findIncidentContext(@Param("targetId") Long targetId,
                                         @Param("hostname") String hostname,
                                         @Param("startAt") LocalDateTime startAt,
                                         Pageable pageable);

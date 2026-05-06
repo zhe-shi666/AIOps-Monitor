@@ -20,4 +20,6 @@ public class MetricDTO implements Serializable {
     private String name;     // 指标名：CPU / MEMORY
     private Double value;    // 指标数值
     private long timestamp;  // 时间戳：System.currentTimeMillis()
+    private Long userId;     // 指标归属用户
+    private Long targetId;   // 指标归属监控目标
 }

@@ -8,6 +8,18 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class RoleGuardService {
+    public void requireUserResourceOperator(User user) {
+        if (user == null || user.getRole() == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "权限不足");
+        }
+        if (user.getRole() == User.Role.ADMIN
+                || user.getRole() == User.Role.OPS
+                || user.getRole() == User.Role.USER) {
+            return;
+        }
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前角色仅允许查看，不能操作自己的资源");
+    }
+
     public void requireOperator(User user) {
         if (user == null || user.getRole() == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "权限不足");

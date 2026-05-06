@@ -17,20 +17,17 @@ public interface AnomalyResultRepository extends JpaRepository<AnomalyResult, Lo
 
     @Query("""
             SELECT a FROM AnomalyResult a
-            WHERE a.userId = :userId
-              AND (:status IS NULL OR a.status = :status)
+            WHERE (:status IS NULL OR a.status = :status)
               AND (:metricKey IS NULL OR a.metricKey = :metricKey)
               AND (:targetId IS NULL OR a.targetId = :targetId)
             ORDER BY a.detectedAt DESC
             """)
-    Page<AnomalyResult> search(@Param("userId") Long userId,
-                               @Param("status") String status,
+    Page<AnomalyResult> search(@Param("status") String status,
                                @Param("metricKey") String metricKey,
                                @Param("targetId") Long targetId,
                                Pageable pageable);
 
-    Optional<AnomalyResult> findFirstByUserIdAndTargetIdAndMetricKeyAndStatusOrderByDetectedAtDesc(
-            Long userId,
+    Optional<AnomalyResult> findFirstByTargetIdAndMetricKeyAndStatusOrderByDetectedAtDesc(
             Long targetId,
             String metricKey,
             String status

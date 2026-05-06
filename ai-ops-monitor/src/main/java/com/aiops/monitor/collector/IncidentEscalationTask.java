@@ -5,6 +5,7 @@ import com.aiops.monitor.model.entity.IncidentLog;
 import com.aiops.monitor.repository.IncidentLogRepository;
 import com.aiops.monitor.service.EscalationPolicyService;
 import com.aiops.monitor.service.NotificationDispatcherService;
+import com.aiops.monitor.service.TargetNotificationSubscriptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -24,6 +25,7 @@ public class IncidentEscalationTask {
     private final IncidentLogRepository incidentLogRepository;
     private final EscalationPolicyService escalationPolicyService;
     private final NotificationDispatcherService notificationDispatcherService;
+    private final TargetNotificationSubscriptionService targetNotificationSubscriptionService;
 
     @Scheduled(fixedDelayString = "${monitor.escalation.scan-ms:30000}")
     public void processEscalations() {
@@ -45,10 +47,15 @@ public class IncidentEscalationTask {
     }
 
     private void escalateIncident(IncidentLog incident, LocalDateTime now) {
-        if (incident.getUserId() == null) {
+        if (incident.getTargetId() == null) {
             return;
         }
-        AlertEscalationPolicy policy = escalationPolicyService.getOrCreateByUserId(incident.getUserId());
+        AlertEscalationPolicy policy = escalationPolicyService.resolvePolicyForTarget(incident.getTargetId());
+        if (policy == null || targetNotificationSubscriptionService.countSubscribers(incident.getTargetId()) <= 0) {
+            incident.setNextNotifyAt(null);
+            incidentLogRepository.save(incident);
+            return;
+        }
 
         int currentLevel = incident.getEscalationLevel() == null ? 0 : incident.getEscalationLevel();
         int newLevel = currentLevel + 1;

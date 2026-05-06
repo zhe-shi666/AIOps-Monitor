@@ -25,22 +25,19 @@ public interface IncidentLogRepository extends JpaRepository<IncidentLog, Long> 
 
     @Query("""
             SELECT i FROM IncidentLog i
-            WHERE i.userId = :userId
-              AND (:status IS NULL OR i.status = :status)
+            WHERE (:status IS NULL OR i.status = :status)
               AND (:metricName IS NULL OR i.metricName = :metricName)
               AND (:hostname IS NULL OR i.hostname LIKE CONCAT('%', :hostname, '%'))
               AND (:keyword IS NULL OR i.message LIKE CONCAT('%', :keyword, '%'))
             ORDER BY COALESCE(i.lastSeenAt, i.createdAt) DESC
             """)
-    Page<IncidentLog> searchByUserId(@Param("userId") Long userId,
-                                     @Param("status") String status,
-                                     @Param("metricName") String metricName,
-                                     @Param("hostname") String hostname,
-                                     @Param("keyword") String keyword,
-                                     Pageable pageable);
+    Page<IncidentLog> search(@Param("status") String status,
+                             @Param("metricName") String metricName,
+                             @Param("hostname") String hostname,
+                             @Param("keyword") String keyword,
+                             Pageable pageable);
 
-    Optional<IncidentLog> findFirstByUserIdAndTargetIdAndMetricNameAndStatusInOrderByCreatedAtDesc(
-            Long userId,
+    Optional<IncidentLog> findFirstByTargetIdAndMetricNameAndStatusInOrderByCreatedAtDesc(
             Long targetId,
             String metricName,
             List<String> statuses
@@ -49,20 +46,16 @@ public interface IncidentLogRepository extends JpaRepository<IncidentLog, Long> 
     @Query("""
             SELECT COALESCE(SUM(COALESCE(i.occurrenceCount, 1)), 0)
             FROM IncidentLog i
-            WHERE i.userId = :userId
-              AND i.createdAt >= :start
+            WHERE i.createdAt >= :start
             """)
-    long sumOccurrenceByUserIdAndCreatedAtAfter(@Param("userId") Long userId,
-                                                @Param("start") LocalDateTime start);
+    long sumOccurrenceByCreatedAtAfter(@Param("start") LocalDateTime start);
 
     @Query("""
             SELECT COALESCE(SUM(COALESCE(i.suppressedCount, 0)), 0)
             FROM IncidentLog i
-            WHERE i.userId = :userId
-              AND i.createdAt >= :start
+            WHERE i.createdAt >= :start
             """)
-    long sumSuppressedByUserIdAndCreatedAtAfter(@Param("userId") Long userId,
-                                                @Param("start") LocalDateTime start);
+    long sumSuppressedByCreatedAtAfter(@Param("start") LocalDateTime start);
 
     @Query("""
             SELECT i FROM IncidentLog i
@@ -72,8 +65,6 @@ public interface IncidentLogRepository extends JpaRepository<IncidentLog, Long> 
             ORDER BY i.nextNotifyAt ASC
             """)
     Page<IncidentLog> findEscalationCandidates(@Param("now") LocalDateTime now, Pageable pageable);
-
-    Optional<IncidentLog> findByIdAndUserId(Long id, Long userId);
 
     @Modifying
     @Query("delete from IncidentLog i where i.createdAt < :before and i.status = 'RESOLVED'")

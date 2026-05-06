@@ -6,5 +6,5 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface NotificationDeliveryLogRepository extends JpaRepository<NotificationDeliveryLog, Long> {
-    Page<NotificationDeliveryLog> findByUserIdAndIncidentId(Long userId, Long incidentId, Pageable pageable);
+    Page<NotificationDeliveryLog> findByIncidentId(Long incidentId, Pageable pageable);
 }

@@ -18,6 +18,12 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   res => res,
   err => {
+    if (err.response?.status === 403 && err.response?.data?.code === 'PASSWORD_CHANGE_REQUIRED') {
+      const auth = useAuthStore()
+      auth.setPasswordChangeRequired(true)
+      window.location.href = '/force-change-password'
+      return Promise.reject(err)
+    }
     if (err.response?.status === 401) {
       const auth = useAuthStore()
       auth.logout()

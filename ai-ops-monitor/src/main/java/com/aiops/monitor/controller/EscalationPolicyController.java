@@ -5,6 +5,7 @@ import com.aiops.monitor.model.entity.AlertEscalationPolicy;
 import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.service.CurrentUserService;
 import com.aiops.monitor.service.EscalationPolicyService;
+import com.aiops.monitor.service.RoleGuardService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +26,7 @@ public class EscalationPolicyController {
 
     private final EscalationPolicyService escalationPolicyService;
     private final CurrentUserService currentUserService;
+    private final RoleGuardService roleGuardService;
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> getPolicy(Authentication authentication) {
@@ -37,6 +39,7 @@ public class EscalationPolicyController {
     public ResponseEntity<Map<String, Object>> updatePolicy(@Valid @RequestBody EscalationPolicyUpdateRequest request,
                                                             Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireOperator(user);
         AlertEscalationPolicy policy = escalationPolicyService.update(user.getId(), request);
         return ResponseEntity.ok(toView(policy));
     }

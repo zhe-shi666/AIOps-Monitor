@@ -67,7 +67,7 @@ public class LocalCollectorOwnershipService {
 
     @Transactional
     protected LocalOwnership resolveFresh(String hostname, LocalDateTime now) {
-        User owner = resolveOwner();
+        User owner = resolveOwner(hostname);
         if (owner == null) {
             log.warn("本地采集归属解析失败：暂无可用用户，hostname={}", hostname);
             return null;
@@ -75,10 +75,10 @@ public class LocalCollectorOwnershipService {
 
         MonitorTarget target = resolveOrCreateTarget(owner.getId(), hostname, now);
         if (target == null) {
-            return new LocalOwnership(owner.getId(), null, hostname);
+            return new LocalOwnership(owner.getId(), null, hostname, false);
         }
         String effectiveHostname = isBlank(target.getHostname()) ? hostname : target.getHostname().trim();
-        return new LocalOwnership(owner.getId(), target.getId(), effectiveHostname);
+        return new LocalOwnership(owner.getId(), target.getId(), effectiveHostname, target.isEnabled());
     }
 
     private User resolveOwner() {
@@ -100,17 +100,42 @@ public class LocalCollectorOwnershipService {
         return userRepository.findFirstByEnabledTrueOrderByIdAsc().orElse(null);
     }
 
+    private User resolveOwner(String hostname) {
+        Optional<User> byId = parseLong(defaultUserIdRaw)
+                .flatMap(userRepository::findById)
+                .filter(User::isEnabled);
+        if (byId.isPresent()) {
+            return byId.get();
+        }
+
+        if (!isBlank(defaultUsername)) {
+            Optional<User> byUsername = userRepository.findByUsername(defaultUsername.trim())
+                    .filter(User::isEnabled);
+            if (byUsername.isPresent()) {
+                return byUsername.get();
+            }
+        }
+
+        if (!isBlank(hostname)) {
+            Optional<User> historicalOwner = monitorTargetRepository.findFirstByHostnameOrderByCreatedAtDesc(hostname.trim())
+                    .flatMap(target -> userRepository.findById(target.getUserId()))
+                    .filter(User::isEnabled);
+            if (historicalOwner.isPresent()) {
+                return historicalOwner.get();
+            }
+        }
+
+        return userRepository.findFirstByEnabledTrueOrderByIdAsc().orElse(null);
+    }
+
     private MonitorTarget resolveOrCreateTarget(Long userId, String hostname, LocalDateTime now) {
-        Optional<MonitorTarget> byHost = monitorTargetRepository
-                .findFirstByUserIdAndHostnameOrderByCreatedAtDesc(userId, hostname);
+        Optional<MonitorTarget> byHost = monitorTargetRepository.findFirstByHostnameOrderByCreatedAtDesc(hostname);
         if (byHost.isPresent()) {
             return touchHeartbeat(byHost.get(), now);
         }
 
         if (!autoCreateTarget) {
-            return monitorTargetRepository.findFirstByUserIdOrderByCreatedAtDesc(userId)
-                    .map(target -> touchHeartbeat(target, now))
-                    .orElse(null);
+            return null;
         }
 
         MonitorTarget created = new MonitorTarget();
@@ -126,11 +151,14 @@ public class LocalCollectorOwnershipService {
         created.setCreatedAt(now);
         created.setLastHeartbeatAt(now);
         MonitorTarget saved = monitorTargetRepository.save(created);
-        log.info("本地采集自动创建监控目标: userId={}, targetId={}, hostname={}", userId, saved.getId(), hostname);
+        log.info("本地采集自动创建共享监控目标: seedUserId={}, targetId={}, hostname={}", userId, saved.getId(), hostname);
         return saved;
     }
 
     private MonitorTarget touchHeartbeat(MonitorTarget target, LocalDateTime now) {
+        if (!target.isEnabled()) {
+            return target;
+        }
         boolean changed = false;
         if (target.getLastHeartbeatAt() == null || target.getLastHeartbeatAt().plusSeconds(30).isBefore(now)) {
             target.setLastHeartbeatAt(now);
@@ -184,5 +212,5 @@ public class LocalCollectorOwnershipService {
         return value.substring(0, maxLen);
     }
 
-    public record LocalOwnership(Long userId, Long targetId, String hostname) {}
+    public record LocalOwnership(Long userId, Long targetId, String hostname, boolean enabled) {}
 }

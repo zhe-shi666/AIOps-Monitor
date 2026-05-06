@@ -119,6 +119,7 @@
                 size="small"
                 type="danger"
                 plain
+                :disabled="!canOperate"
                 :loading="closingInvestigation"
                 @click="closeCurrentInvestigation">
                 {{ locale === 'zh' ? '关闭调查' : 'Close' }}
@@ -181,6 +182,7 @@
                 <el-button
                   size="small"
                   plain
+                  :disabled="!canOperate"
                   :loading="postmortemGenerating"
                   @click="generatePostmortemDraft">
                   {{ locale === 'zh' ? '生成复盘草稿' : 'Generate Postmortem' }}
@@ -189,6 +191,7 @@
                   size="small"
                   type="primary"
                   plain
+                  :disabled="!canOperate"
                   :loading="snapshotSaving"
                   @click="saveSnapshot">
                   {{ locale === 'zh' ? '保存快照' : 'Save Snapshot' }}
@@ -215,7 +218,7 @@
               <span class="section-count">{{ observations.length }}</span>
             </div>
 
-            <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="observation-create">
+            <div v-if="selectedDetail.investigation.status !== 'CLOSED' && canOperate" class="observation-create">
               <div class="observation-create-row">
                 <el-select v-model="observationDraft.type" size="small" class="observation-type-select">
                   <el-option label="METRIC" value="METRIC" />
@@ -253,7 +256,7 @@
                   :step="0.05"
                   :precision="2"
                   class="observation-confidence" />
-                <el-button size="small" type="primary" :loading="observationSubmitting" @click="createObservation">
+                <el-button size="small" type="primary" :disabled="!canOperate" :loading="observationSubmitting" @click="createObservation">
                   {{ locale === 'zh' ? '新增证据' : 'Add Observation' }}
                 </el-button>
               </div>
@@ -284,7 +287,7 @@
               <span class="section-count">{{ hypotheses.length }}</span>
             </div>
 
-            <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="hypothesis-create">
+            <div v-if="selectedDetail.investigation.status !== 'CLOSED' && canOperate" class="hypothesis-create">
               <el-input
                 v-model="hypothesisDraft.title"
                 size="small"
@@ -309,7 +312,7 @@
                   :step="0.05"
                   :precision="2"
                   class="hypothesis-confidence" />
-                <el-button size="small" type="primary" :loading="hypothesisSubmitting" @click="createHypothesis">
+                <el-button size="small" type="primary" :disabled="!canOperate" :loading="hypothesisSubmitting" @click="createHypothesis">
                   {{ locale === 'zh' ? '新增假设' : 'Add Hypothesis' }}
                 </el-button>
               </div>
@@ -338,7 +341,7 @@
               <span class="section-count">{{ actionPlans.length }}</span>
             </div>
 
-            <div v-if="selectedDetail.investigation.status !== 'CLOSED'" class="action-create">
+            <div v-if="selectedDetail.investigation.status !== 'CLOSED' && canOperate" class="action-create">
               <el-input
                 v-model="actionDraft.title"
                 size="small"
@@ -366,7 +369,7 @@
                   :disabled="actionDraft.riskLevel !== 'LOW'"
                   :active-text="locale === 'zh' ? '需审批' : 'Approval'"
                   :inactive-text="locale === 'zh' ? '免审批' : 'No approval'" />
-                <el-button size="small" type="primary" :loading="actionSubmitting" @click="createActionPlan">
+                <el-button size="small" type="primary" :disabled="!canOperate" :loading="actionSubmitting" @click="createActionPlan">
                   {{ locale === 'zh' ? '新增动作' : 'Add Action' }}
                 </el-button>
               </div>
@@ -390,7 +393,7 @@
                   <el-button
                     size="small"
                     plain
-                    :disabled="action.status === 'APPROVED' || action.status === 'EXECUTED' || action.status === 'FAILED' || !action.requiresApproval"
+                    :disabled="!canOperate || action.status === 'APPROVED' || action.status === 'EXECUTED' || action.status === 'FAILED' || !action.requiresApproval"
                     :loading="actionOperatingId === action.id && actionOperatingType === 'approve'"
                     @click="approveAction(action)">
                     {{ locale === 'zh' ? '审批' : 'Approve' }}
@@ -399,7 +402,7 @@
                     size="small"
                     type="success"
                     plain
-                    :disabled="action.status === 'EXECUTED' || (action.requiresApproval && action.status !== 'APPROVED' && action.status !== 'FAILED')"
+                    :disabled="!canOperate || action.status === 'EXECUTED' || (action.requiresApproval && action.status !== 'APPROVED' && action.status !== 'FAILED')"
                     :loading="actionOperatingId === action.id && actionOperatingType === 'execute'"
                     @click="executeAction(action)">
                     {{ locale === 'zh' ? '执行' : 'Execute' }}
@@ -408,7 +411,7 @@
                     size="small"
                     type="warning"
                     plain
-                    :disabled="action.status !== 'FAILED'"
+                    :disabled="!canOperate || action.status !== 'FAILED'"
                     :loading="actionOperatingId === action.id && actionOperatingType === 'retry'"
                     @click="retryAction(action)">
                     {{ locale === 'zh' ? '重试' : 'Retry' }}
@@ -417,7 +420,7 @@
                     size="small"
                     type="info"
                     plain
-                    :disabled="!action.rollbackPlan"
+                    :disabled="!canOperate || !action.rollbackPlan"
                     :loading="actionOperatingId === action.id && actionOperatingType === 'rollbackDrill'"
                     @click="rollbackDrill(action)">
                     {{ locale === 'zh' ? '回滚演练' : 'Rollback Drill' }}
@@ -426,7 +429,7 @@
                     size="small"
                     type="danger"
                     plain
-                    :disabled="action.status !== 'EXECUTED' || !action.rollbackPlan"
+                    :disabled="!canOperate || action.status !== 'EXECUTED' || !action.rollbackPlan"
                     :loading="actionOperatingId === action.id && actionOperatingType === 'rollbackExecute'"
                     @click="rollbackExecute(action)">
                     {{ locale === 'zh' ? '执行回滚' : 'Rollback' }}
@@ -588,6 +591,7 @@ import { useRoute } from 'vue-router'
 import { WS_BASE_URL } from '../config/env'
 import { useAuthStore } from '../stores/auth'
 import { useLocaleMode } from '../composables/useLocaleMode'
+import { usePermissions } from '../composables/usePermissions'
 import {
   approveInvestigationAction,
   closeInvestigation,
@@ -611,6 +615,7 @@ import {
 const auth = useAuthStore()
 const route = useRoute()
 const { locale } = useLocaleMode()
+const { canOperate, readOnlyReason } = usePermissions()
 
 const activeTab = ref('investigations')
 const detailTab = ref('overview')
@@ -937,6 +942,10 @@ async function loadQualitySummary(silent = true) {
 }
 
 async function closeCurrentInvestigation() {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   if (!selectedDetail.value?.investigation?.id) return
   const id = selectedDetail.value.investigation.id
   closingInvestigation.value = true
@@ -990,6 +999,10 @@ async function generatePostmortemDraft() {
 }
 
 async function createObservation() {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   const investigationId = selectedDetail.value?.investigation?.id
   if (!investigationId) return
   if (!observationDraft.metricName.trim() && !observationDraft.sourceRef.trim()) {
@@ -1024,6 +1037,10 @@ async function createObservation() {
 }
 
 async function createHypothesis() {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   const investigationId = selectedDetail.value?.investigation?.id
   if (!investigationId) return
   if (!hypothesisDraft.title.trim()) {
@@ -1054,6 +1071,10 @@ async function createHypothesis() {
 }
 
 async function createActionPlan() {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   const investigationId = selectedDetail.value?.investigation?.id
   if (!investigationId) return
   if (!actionDraft.title.trim()) {
@@ -1094,6 +1115,10 @@ async function createActionPlan() {
 }
 
 async function rollbackDrill(action) {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   const investigationId = selectedDetail.value?.investigation?.id
   if (!investigationId || !action?.id) return
   actionOperatingId.value = action.id
@@ -1118,6 +1143,10 @@ async function rollbackDrill(action) {
 }
 
 async function rollbackExecute(action) {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   const investigationId = selectedDetail.value?.investigation?.id
   if (!investigationId || !action?.id) return
   actionOperatingId.value = action.id
@@ -1142,6 +1171,10 @@ async function rollbackExecute(action) {
 }
 
 async function approveAction(action) {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   const investigationId = selectedDetail.value?.investigation?.id
   if (!investigationId || !action?.id) return
   actionOperatingId.value = action.id
@@ -1161,6 +1194,10 @@ async function approveAction(action) {
 }
 
 async function executeAction(action) {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   const investigationId = selectedDetail.value?.investigation?.id
   if (!investigationId || !action?.id) return
   actionOperatingId.value = action.id
@@ -1184,6 +1221,10 @@ async function executeAction(action) {
 }
 
 async function retryAction(action) {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   const investigationId = selectedDetail.value?.investigation?.id
   if (!investigationId || !action?.id) return
   actionOperatingId.value = action.id
@@ -1208,6 +1249,10 @@ async function retryAction(action) {
 }
 
 async function saveSnapshot() {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   const investigationId = selectedDetail.value?.investigation?.id
   const markdown = snapshotDraft.value.trim()
   if (!investigationId) return

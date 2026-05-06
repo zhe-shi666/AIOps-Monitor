@@ -56,7 +56,7 @@
 
     <div class="flex items-center justify-between">
       <p class="text-xs text-slate-500">{{ t('updatedAt') }}：{{ formatDate(updatedAt) }}</p>
-      <el-button type="primary" :loading="saving" @click="save">{{ t('save') }}</el-button>
+      <el-button type="primary" :disabled="!canOperate" :loading="saving" @click="save">{{ t('save') }}</el-button>
     </div>
   </div>
 </template>
@@ -66,10 +66,12 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getThresholdSettings, updateThresholdSettings } from '../api/settings'
 import { useI18n } from '../composables/useI18n'
+import { usePermissions } from '../composables/usePermissions'
 
 const loading = ref(false)
 const saving = ref(false)
 const updatedAt = ref(null)
+const { canOperate, readOnlyReason } = usePermissions()
 
 const form = reactive({
   cpuThreshold: 70,
@@ -116,6 +118,10 @@ async function reload() {
 }
 
 async function save() {
+  if (!canOperate.value) {
+    ElMessage.warning(readOnlyReason.value)
+    return
+  }
   saving.value = true
   try {
     const payload = {

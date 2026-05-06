@@ -36,6 +36,7 @@ import com.aiops.monitor.service.CurrentUserService;
 import com.aiops.monitor.service.InvestigationEventPublisher;
 import com.aiops.monitor.service.InvestigationIntelligenceService;
 import com.aiops.monitor.service.InvestigationQualityService;
+import com.aiops.monitor.service.RoleGuardService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
@@ -76,6 +77,7 @@ public class InvestigationController {
     private final InvestigationQualityService investigationQualityService;
     private final InvestigationIntelligenceService investigationIntelligenceService;
     private final InvestigationEventPublisher investigationEventPublisher;
+    private final RoleGuardService roleGuardService;
     private final ObjectMapper objectMapper;
 
     @GetMapping
@@ -102,6 +104,7 @@ public class InvestigationController {
     public ResponseEntity<Map<String, Object>> create(@Valid @RequestBody(required = false) AiInvestigationCreateRequest request,
                                                       Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         AiInvestigation investigation = new AiInvestigation();
         investigation.setUserId(user.getId());
         if (request != null) {
@@ -358,6 +361,7 @@ public class InvestigationController {
     @PostMapping("/{id}/close")
     public ResponseEntity<Map<String, Object>> close(@PathVariable Long id, Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         AiInvestigation investigation = requireInvestigation(id, user.getId());
         investigation.setStatus("CLOSED");
         investigation.setClosedAt(LocalDateTime.now());
@@ -383,6 +387,7 @@ public class InvestigationController {
                                                                         @RequestBody(required = false) AiInvestigationGenerateRequest request,
                                                                         Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         String promptHint = request == null ? null : normalize(request.getPromptHint());
         boolean includePostmortem = request != null && Boolean.TRUE.equals(request.getIncludePostmortem());
         Map<String, Object> result = investigationIntelligenceService.generateAndPersist(
@@ -400,6 +405,7 @@ public class InvestigationController {
                                                                   @RequestBody(required = false) AiPostmortemGenerateRequest request,
                                                                   Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         String additionalContext = request == null ? null : normalize(request.getAdditionalContext());
         Map<String, Object> result = investigationIntelligenceService.generatePostmortemDraft(
                 id,
@@ -415,6 +421,7 @@ public class InvestigationController {
                                                                  @Valid @RequestBody AiObservationCreateRequest request,
                                                                  Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         AiInvestigation investigation = requireInvestigation(id, user.getId());
         if ("CLOSED".equalsIgnoreCase(investigation.getStatus())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调查已关闭，不能追加证据");
@@ -459,6 +466,7 @@ public class InvestigationController {
                                                                 @Valid @RequestBody AiHypothesisCreateRequest request,
                                                                 Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         AiInvestigation investigation = requireInvestigation(id, user.getId());
         if ("CLOSED".equalsIgnoreCase(investigation.getStatus())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调查已关闭，不能新增假设");
@@ -509,6 +517,7 @@ public class InvestigationController {
                                                             @Valid @RequestBody AiActionPlanCreateRequest request,
                                                             Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         AiInvestigation investigation = requireInvestigation(id, user.getId());
         if ("CLOSED".equalsIgnoreCase(investigation.getStatus())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "调查已关闭，不能新增动作");
@@ -583,6 +592,7 @@ public class InvestigationController {
                                                              @RequestBody(required = false) AiActionApproveRequest request,
                                                              Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         requireInvestigation(id, user.getId());
         AiActionPlan actionPlan = aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
@@ -644,6 +654,7 @@ public class InvestigationController {
                                                              @RequestBody(required = false) AiActionExecuteRequest request,
                                                              Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         requireInvestigation(id, user.getId());
         AiActionPlan actionPlan = aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
@@ -723,6 +734,7 @@ public class InvestigationController {
                                                            @RequestBody(required = false) AiActionRetryRequest request,
                                                            Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         requireInvestigation(id, user.getId());
         AiActionPlan actionPlan = aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
@@ -794,6 +806,7 @@ public class InvestigationController {
                                                              @RequestBody(required = false) AiActionRollbackRequest request,
                                                              Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         requireInvestigation(id, user.getId());
         AiActionPlan actionPlan = aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
@@ -806,6 +819,7 @@ public class InvestigationController {
                                                                @RequestBody(required = false) AiActionRollbackRequest request,
                                                                Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         requireInvestigation(id, user.getId());
         AiActionPlan actionPlan = aiActionPlanRepository.findByIdAndInvestigationIdAndUserId(actionId, id, user.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "动作不存在"));
@@ -817,6 +831,7 @@ public class InvestigationController {
                                                               @Valid @RequestBody AiReportSnapshotCreateRequest request,
                                                               Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
+        roleGuardService.requireUserResourceOperator(user);
         requireInvestigation(id, user.getId());
 
         String markdown = normalize(request.getReportMarkdown());

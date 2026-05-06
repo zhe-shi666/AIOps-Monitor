@@ -103,7 +103,7 @@ public class AgentIngestController {
         history.setProcessCount(request.getProcessCount());
         history.setTimestamp(pointTime);
         history.setHostname(request.getHostname());
-        history.setUserId(target.getUserId());
+        history.setUserId(null);
         history.setTargetId(target.getId());
         systemMetricsRepository.save(history);
 
@@ -190,6 +190,8 @@ public class AgentIngestController {
                 .ip(target.getIpAddress() == null ? "" : target.getIpAddress())
                 .hostname(request.getHostname())
                 .timestamp(System.currentTimeMillis())
+                .userId(null)
+                .targetId(target.getId())
                 .build();
         metricsPublisher.send("/topic/metrics", metric);
     }
@@ -221,8 +223,7 @@ public class AgentIngestController {
         boolean inSilenceWindow = last != null && last.plusSeconds(effectiveSilenceSeconds).isAfter(now);
 
         IncidentLog existing = incidentLogRepository
-                .findFirstByUserIdAndTargetIdAndMetricNameAndStatusInOrderByCreatedAtDesc(
-                        target.getUserId(),
+                .findFirstByTargetIdAndMetricNameAndStatusInOrderByCreatedAtDesc(
                         target.getId(),
                         metricName,
                         java.util.List.of("OPEN", "ACKNOWLEDGED")
@@ -280,7 +281,7 @@ public class AgentIngestController {
                 value,
                 threshold));
         incidentEntity.setHostname(target.getHostname());
-        incidentEntity.setUserId(target.getUserId());
+        incidentEntity.setUserId(null);
         incidentEntity.setTargetId(target.getId());
         incidentEntity.setSeverity(severity);
         incidentEntity.setStatus("OPEN");

@@ -11,5 +11,7 @@ public interface NotificationChannelRepository extends JpaRepository<Notificatio
 
     List<NotificationChannel> findByUserIdAndEnabledTrueOrderByIdDesc(Long userId);
 
+    List<NotificationChannel> findByEnabledTrueOrderByIdDesc();
+
     Optional<NotificationChannel> findByIdAndUserId(Long id, Long userId);
 }

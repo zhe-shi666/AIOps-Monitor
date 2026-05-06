@@ -2,6 +2,7 @@ package com.aiops.monitor.config;
 
 import com.aiops.monitor.repository.UserRepository;
 import com.aiops.monitor.security.JwtAuthenticationFilter;
+import com.aiops.monitor.security.PasswordChangeRequiredFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,6 +34,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
+    private final PasswordChangeRequiredFilter passwordChangeRequiredFilter;
     private final UserRepository userRepository;
 
     @Bean
@@ -50,7 +52,8 @@ public class SecurityConfig {
             )
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authenticationProvider(authenticationProvider())
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(passwordChangeRequiredFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

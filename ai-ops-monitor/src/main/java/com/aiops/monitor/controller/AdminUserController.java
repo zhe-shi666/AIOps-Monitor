@@ -5,6 +5,7 @@ import com.aiops.monitor.repository.IncidentLogRepository;
 import com.aiops.monitor.repository.MonitorTargetRepository;
 import com.aiops.monitor.repository.UserRepository;
 import com.aiops.monitor.service.AuditLogService;
+import com.aiops.monitor.service.TemporaryPasswordService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -27,6 +28,7 @@ public class AdminUserController {
     private final IncidentLogRepository incidentLogRepository;
     private final MonitorTargetRepository monitorTargetRepository;
     private final AuditLogService auditLogService;
+    private final TemporaryPasswordService temporaryPasswordService;
 
     @GetMapping("/users")
     public ResponseEntity<Page<User>> listUsers(
@@ -46,6 +48,23 @@ public class AdminUserController {
         return ResponseEntity.ok(Map.of(
                 "user", user,
                 "targets", monitorTargetRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+        ));
+    }
+
+    @PostMapping("/users/{id}/temporary-password")
+    public ResponseEntity<?> resetTemporaryPassword(@PathVariable Long id,
+                                                    org.springframework.security.core.Authentication authentication,
+                                                    HttpServletRequest request) {
+        User user = userRepository.findById(id).orElseThrow();
+        String temporaryPassword = temporaryPasswordService.issueTemporaryPassword(user);
+        auditLogService.record(authentication, request, "USER_TEMP_PASSWORD_RESET", "USER", id, Map.of(
+                "passwordChangeRequired", true,
+                "temporaryPasswordIssuedAt", user.getTemporaryPasswordIssuedAt()
+        ));
+        return ResponseEntity.ok(Map.of(
+                "message", "临时密码已生成，用户下次登录必须修改密码",
+                "temporaryPassword", temporaryPassword,
+                "passwordChangeRequired", true
         ));
     }
 

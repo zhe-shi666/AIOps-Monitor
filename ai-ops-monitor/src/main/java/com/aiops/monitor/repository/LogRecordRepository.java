@@ -16,14 +16,12 @@ public interface LogRecordRepository extends JpaRepository<LogRecord, Long> {
 
     @Query("""
             SELECT l FROM LogRecord l
-            WHERE l.userId = :userId
-              AND l.occurredAt >= :startAt
+            WHERE l.occurredAt >= :startAt
               AND (:targetId IS NULL OR l.targetId = :targetId)
               AND (:hostname IS NULL OR l.hostname = :hostname)
             ORDER BY l.occurredAt DESC
             """)
-    List<LogRecord> findIncidentContext(@Param("userId") Long userId,
-                                        @Param("targetId") Long targetId,
+    List<LogRecord> findIncidentContext(@Param("targetId") Long targetId,
                                         @Param("hostname") String hostname,
                                         @Param("startAt") LocalDateTime startAt,
                                         Pageable pageable);

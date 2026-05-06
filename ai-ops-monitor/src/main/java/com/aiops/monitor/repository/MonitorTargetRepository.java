@@ -8,9 +8,10 @@ import java.util.List;
 import java.util.Optional;
 
 public interface MonitorTargetRepository extends JpaRepository<MonitorTarget, Long> {
+    List<MonitorTarget> findAllByOrderByCreatedAtDesc();
     List<MonitorTarget> findByUserIdOrderByCreatedAtDesc(Long userId);
-    Optional<MonitorTarget> findByIdAndUserId(Long id, Long userId);
     Optional<MonitorTarget> findFirstByUserIdAndHostnameOrderByCreatedAtDesc(Long userId, String hostname);
+    Optional<MonitorTarget> findFirstByHostnameOrderByCreatedAtDesc(String hostname);
     Optional<MonitorTarget> findFirstByUserIdOrderByCreatedAtDesc(Long userId);
     Optional<MonitorTarget> findByAgentKey(String agentKey);
     long countByUserId(Long userId);

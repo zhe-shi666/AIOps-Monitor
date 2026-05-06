@@ -20,7 +20,7 @@ public class TargetThresholdService {
     public EffectiveThreshold resolve(Long userId, Long targetId) {
         AlertThresholdConfig userConfig = thresholdConfigService.getOrCreateByUserId(userId);
         TargetThresholdConfig targetConfig = targetId == null ? null : targetThresholdConfigRepository
-                .findByUserIdAndTargetId(userId, targetId)
+                .findByTargetId(targetId)
                 .filter(TargetThresholdConfig::isEnabled)
                 .orElse(null);
         return new EffectiveThreshold(
@@ -35,7 +35,7 @@ public class TargetThresholdService {
     }
 
     public TargetThresholdConfig getOrCreate(Long userId, Long targetId) {
-        return targetThresholdConfigRepository.findByUserIdAndTargetId(userId, targetId)
+        return targetThresholdConfigRepository.findByTargetId(targetId)
                 .orElseGet(() -> {
                     TargetThresholdConfig created = new TargetThresholdConfig();
                     created.setUserId(userId);

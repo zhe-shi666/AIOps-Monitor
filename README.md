@@ -102,7 +102,7 @@
    `docker compose up -d`
 2. **首次拉取 Ollama 模型**（只需一次，后续会复用卷缓存）：
    `docker compose exec ollama ollama pull qwen3:0.6b`
-3. **数据库**：执行根目录下 `mysql.sql` 初始化脚本。
+3. **数据库**：后端已接入 Flyway 自动迁移，新部署不再需要手工执行 `mysql.sql`。启动后端时会自动执行 `ai-ops-monitor/src/main/resources/db/migration` 下的版本化脚本。
 4. **启动后端**：本地开发可用 `dev`，多节点可用 `prod` 并传入参数（例如 `--server.port=8081 --spring.application.name=Node-B --monitor.mode=distributed --spring.profiles.active=prod`）。
 5. **启动前端**：
 * cd aiops-vue
@@ -135,7 +135,19 @@
 本轮已补齐企业使用与交付说明：
 
 1. `docs/企业交付使用手册.md`：客户使用、Agent 接入、AI 专家、告警处理、演示脚本。
-2. `docs/当前企业级TODO收口.md`：当前 10 项企业级 TODO 的完成状态与后续增强边界。
+2. `docs/生产部署方案.md`：Docker Compose 生产部署、Nginx、HTTPS、环境变量、Flyway 自动迁移。
+3. `docs/备份恢复SOP.md`：MySQL 备份、恢复、保留策略、升级回滚 SOP。
+4. `docs/企业安全与迁移说明.md`：账号安全、密码重置、Agent 签名升级、权限矩阵、测试命令。
+5. `docs/当前企业级TODO收口.md`：当前企业级 TODO 的完成状态与后续增强边界。
+
+## 企业交付验证命令
+
+```bash
+cd ai-ops-monitor && ./mvnw test
+cd ../aiops-vue && npm run build && npm run smoke:permissions
+cd .. && AGENT_SIGNING_KEY='local-dev-agent-signing-key-change-me' ./tools/agent-lite/package-agent-lite.sh
+node tools/agent-lite/test/release-manifest-smoke.mjs
+```
 
 ## 📄 开源协议
 本项目遵循 MIT License 开源协议。

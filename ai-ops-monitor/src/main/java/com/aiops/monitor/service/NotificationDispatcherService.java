@@ -3,8 +3,12 @@ package com.aiops.monitor.service;
 import com.aiops.monitor.model.entity.IncidentLog;
 import com.aiops.monitor.model.entity.NotificationChannel;
 import com.aiops.monitor.model.entity.NotificationDeliveryLog;
+import com.aiops.monitor.model.entity.TargetNotificationSubscription;
+import com.aiops.monitor.model.entity.User;
 import com.aiops.monitor.repository.NotificationChannelRepository;
 import com.aiops.monitor.repository.NotificationDeliveryLogRepository;
+import com.aiops.monitor.repository.TargetNotificationSubscriptionRepository;
+import com.aiops.monitor.repository.UserRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +35,9 @@ public class NotificationDispatcherService {
 
     private final NotificationChannelRepository notificationChannelRepository;
     private final NotificationDeliveryLogRepository notificationDeliveryLogRepository;
+    private final NotificationEmailService notificationEmailService;
+    private final UserRepository userRepository;
+    private final TargetNotificationSubscriptionRepository targetNotificationSubscriptionRepository;
     private final ObjectMapper objectMapper;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -52,23 +59,63 @@ public class NotificationDispatcherService {
         dispatch("INCIDENT_ESCALATED", incident);
     }
 
+    public void dispatchChannelTest(NotificationChannel channel, Long userId) {
+        if (channel == null || userId == null) {
+            return;
+        }
+        IncidentLog incident = new IncidentLog();
+        incident.setId(0L);
+        incident.setUserId(userId);
+        incident.setStatus("OPEN");
+        incident.setSeverity("P2");
+        incident.setMetricName("cpu.usage");
+        incident.setMetricValue(92.4);
+        incident.setThreshold(85.0);
+        incident.setMessage("这是一封测试通知，用于验证通知通道配置是否正确。");
+        incident.setHostname("test-node");
+        incident.setTargetId(0L);
+        incident.setEscalationLevel(0);
+        incident.setCreatedAt(LocalDateTime.now());
+
+        if ("WEBHOOK".equalsIgnoreCase(channel.getType())) {
+            deliverWebhook(channel, "CHANNEL_TEST", incident);
+        } else if ("EMAIL".equalsIgnoreCase(channel.getType())) {
+            deliverEmail(channel, "CHANNEL_TEST", incident);
+        }
+    }
+
     private void dispatch(String eventType, IncidentLog incident) {
-        if (incident == null || incident.getUserId() == null) {
+        if (incident == null) {
             return;
         }
 
-        List<NotificationChannel> channels = notificationChannelRepository
-                .findByUserIdAndEnabledTrueOrderByIdDesc(incident.getUserId());
-        if (channels.isEmpty()) {
-            return;
-        }
-
+        List<NotificationChannel> channels = notificationChannelRepository.findByEnabledTrueOrderByIdDesc();
         for (NotificationChannel channel : channels) {
-            if (!"WEBHOOK".equalsIgnoreCase(channel.getType())) {
-                continue;
+            if ("WEBHOOK".equalsIgnoreCase(channel.getType())) {
+                deliverWebhook(channel, eventType, incident);
             }
-            deliverWebhook(channel, eventType, incident);
         }
+
+        resolveSubscribedUsers(incident).stream()
+                .filter(User::isEnabled)
+                .filter(User::isNotificationEnabled)
+                .filter(user -> user.getNotificationEmail() != null && !user.getNotificationEmail().isBlank())
+                .forEach(user -> deliverUserEmail(user, eventType, incident));
+    }
+
+    private List<User> resolveSubscribedUsers(IncidentLog incident) {
+        if (incident.getTargetId() == null) {
+            return List.of();
+        }
+        List<Long> userIds = targetNotificationSubscriptionRepository.findByTargetIdAndEnabledTrue(incident.getTargetId())
+                .stream()
+                .map(TargetNotificationSubscription::getUserId)
+                .distinct()
+                .toList();
+        if (userIds.isEmpty()) {
+            return List.of();
+        }
+        return userRepository.findAllById(userIds);
     }
 
     private void deliverWebhook(NotificationChannel channel, String eventType, IncidentLog incident) {
@@ -109,6 +156,33 @@ public class NotificationDispatcherService {
         }
     }
 
+    private void deliverEmail(NotificationChannel channel, String eventType, IncidentLog incident) {
+        LocalDateTime now = LocalDateTime.now();
+        try {
+            notificationEmailService.sendIncidentMail(channel, eventType, incident);
+            saveDeliveryLog(channel, incident, "SUCCESS", 250, "SMTP accepted", null, now);
+            channel.setLastNotifiedAt(now);
+            channel.setLastError(null);
+            channel.setUpdatedAt(now);
+            notificationChannelRepository.save(channel);
+        } catch (Exception e) {
+            log.warn("Email delivery failed, channelId={}, incidentId={}", channel.getId(), incident.getId(), e);
+            saveDeliveryLog(channel, incident, "FAILED", null, null, truncate(e.getMessage(), 500), now);
+            updateChannelError(channel, now, e.getMessage());
+        }
+    }
+
+    private void deliverUserEmail(User user, String eventType, IncidentLog incident) {
+        LocalDateTime now = LocalDateTime.now();
+        try {
+            notificationEmailService.sendIncidentMailToRecipient(user.getNotificationEmail(), eventType, incident);
+            saveUserEmailDeliveryLog(user, incident, "SUCCESS", 250, "SMTP accepted", null, now);
+        } catch (Exception e) {
+            log.warn("User email delivery failed, userId={}, incidentId={}", user.getId(), incident.getId(), e);
+            saveUserEmailDeliveryLog(user, incident, "FAILED", null, null, truncate(e.getMessage(), 500), now);
+        }
+    }
+
     private Map<String, Object> buildPayload(String eventType, IncidentLog incident) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("eventType", eventType);
@@ -146,7 +220,7 @@ public class NotificationDispatcherService {
         log.setIncidentId(incident.getId());
         log.setChannelId(channel.getId());
         log.setChannelName(channel.getName());
-        log.setTarget(channel.getWebhookUrl());
+        log.setTarget("EMAIL".equalsIgnoreCase(channel.getType()) ? channel.getEmailTo() : channel.getWebhookUrl());
         log.setStatus(status);
         log.setHttpStatus(httpStatus);
         log.setResponseBody(responseBody);
@@ -160,6 +234,27 @@ public class NotificationDispatcherService {
         channel.setLastError(truncate(message, 500));
         channel.setUpdatedAt(now);
         notificationChannelRepository.save(channel);
+    }
+
+    private void saveUserEmailDeliveryLog(User user,
+                                          IncidentLog incident,
+                                          String status,
+                                          Integer httpStatus,
+                                          String responseBody,
+                                          String errorMessage,
+                                          LocalDateTime createdAt) {
+        NotificationDeliveryLog log = new NotificationDeliveryLog();
+        log.setUserId(user.getId());
+        log.setIncidentId(incident.getId());
+        log.setChannelId(null);
+        log.setChannelName("USER_EMAIL_PROFILE");
+        log.setTarget(user.getNotificationEmail());
+        log.setStatus(status);
+        log.setHttpStatus(httpStatus);
+        log.setResponseBody(responseBody);
+        log.setErrorMessage(errorMessage);
+        log.setCreatedAt(createdAt);
+        notificationDeliveryLogRepository.save(log);
     }
 
     private String truncate(String value, int limit) {

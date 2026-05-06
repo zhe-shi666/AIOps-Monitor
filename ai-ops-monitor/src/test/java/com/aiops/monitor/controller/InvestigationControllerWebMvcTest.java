@@ -25,6 +25,7 @@ import com.aiops.monitor.service.InvestigationEventPublisher;
 import com.aiops.monitor.service.InvestigationIntelligenceService;
 import com.aiops.monitor.service.InvestigationQualityService;
 import com.aiops.monitor.security.JwtAuthenticationFilter;
+import com.aiops.monitor.security.PasswordChangeRequiredFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -94,8 +95,15 @@ class InvestigationControllerWebMvcTest {
     private InvestigationIntelligenceService investigationIntelligenceService;
     @MockBean
     private InvestigationEventPublisher investigationEventPublisher;
+
+    @MockBean
+    private com.aiops.monitor.service.RoleGuardService roleGuardService;
+
     @MockBean
     private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @MockBean
+    private PasswordChangeRequiredFilter passwordChangeRequiredFilter;
 
     @Test
     void shouldReturnInvestigationPage() throws Exception {

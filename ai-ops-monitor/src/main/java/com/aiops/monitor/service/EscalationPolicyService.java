@@ -2,6 +2,8 @@ package com.aiops.monitor.service;
 
 import com.aiops.monitor.model.dto.EscalationPolicyUpdateRequest;
 import com.aiops.monitor.model.entity.AlertEscalationPolicy;
+import com.aiops.monitor.model.entity.TargetNotificationSubscription;
+import com.aiops.monitor.repository.TargetNotificationSubscriptionRepository;
 import com.aiops.monitor.repository.AlertEscalationPolicyRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +23,7 @@ import java.util.stream.Collectors;
 public class EscalationPolicyService {
 
     private final AlertEscalationPolicyRepository alertEscalationPolicyRepository;
+    private final TargetNotificationSubscriptionRepository targetNotificationSubscriptionRepository;
 
     @Value("${monitor.escalation.p1-intervals:1,3,5,10}")
     private String defaultP1Intervals;
@@ -71,6 +74,20 @@ public class EscalationPolicyService {
         policy.setP3Intervals(normalizeIntervals(request.getP3Intervals(), "p3Intervals"));
         policy.setUpdatedAt(LocalDateTime.now());
         return alertEscalationPolicyRepository.save(policy);
+    }
+
+    public AlertEscalationPolicy resolvePolicyForTarget(Long targetId) {
+        if (targetId == null) {
+            return null;
+        }
+        List<TargetNotificationSubscription> subscriptions = targetNotificationSubscriptionRepository.findByTargetIdAndEnabledTrue(targetId);
+        for (TargetNotificationSubscription subscription : subscriptions) {
+            if (subscription.getUserId() == null) {
+                continue;
+            }
+            return getOrCreateByUserId(subscription.getUserId());
+        }
+        return null;
     }
 
     public Integer getIntervalMinutes(AlertEscalationPolicy policy, String severity, int index) {

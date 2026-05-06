@@ -104,7 +104,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
+defineOptions({ name: 'DashboardView' })
+
+import { ref, reactive, onMounted, onUnmounted, onActivated, onDeactivated, watch, computed, nextTick } from 'vue'
 import SockJS from 'sockjs-client'
 import Stomp from 'stompjs'
 import { useAuthStore } from '../stores/auth'
@@ -141,6 +143,8 @@ watch(selectedMetric, () => {
 const chartRef = ref(null)
 let myChart = null
 let chartRuntime = null
+let stompClient = null
+let reconnectTimer = null
 const metricSeries = reactive({})
 const nodeLastSeen = reactive({})
 
@@ -421,16 +425,22 @@ const updateChartData = (metric) => {
 let connectionCheckInterval = null
 
 const initWebSocket = () => {
+  if (stompClient?.connected) return
   const socket = new SockJS(`${WS_BASE_URL}/ws-monitor`)
   const stomp = Stomp.over(socket)
   stomp.debug = null
+  stompClient = stomp
 
   const headers = auth.token ? { Authorization: `Bearer ${auth.token}` } : {}
 
   stomp.connect(headers, () => {
     wsConnected.value = true
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
     connectionCheckInterval = setInterval(() => {
-      if (!wsConnected.value) initWebSocket()
+      if (!wsConnected.value && !stompClient?.connected) initWebSocket()
     }, 5000)
 
     stomp.subscribe('/topic/metrics', (msg) => {
@@ -439,7 +449,11 @@ const initWebSocket = () => {
   }, () => {
     wsConnected.value = false
     clearInterval(connectionCheckInterval)
-    setTimeout(initWebSocket, 5000)
+    if (reconnectTimer) clearTimeout(reconnectTimer)
+    reconnectTimer = setTimeout(() => {
+      stompClient = null
+      initWebSocket()
+    }, 5000)
   })
 }
 
@@ -454,9 +468,40 @@ onMounted(async () => {
   })
 })
 
+onActivated(() => {
+  nextTick(() => {
+    if (myChart) {
+      myChart.resize()
+      myChart.setOption(getChartOption(), true)
+    } else {
+      initChart()
+    }
+    if (!stompClient?.connected) {
+      initWebSocket()
+    }
+  })
+})
+
+onDeactivated(() => {
+  clearInterval(connectionCheckInterval)
+  connectionCheckInterval = null
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+})
+
 onUnmounted(() => {
+  if (stompClient?.connected) {
+    stompClient.disconnect(() => {})
+  }
+  stompClient = null
   if (myChart) { myChart.dispose(); myChart = null }
   clearInterval(connectionCheckInterval)
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
   window.removeEventListener('resize', handleResize)
 })
 </script>

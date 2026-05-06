@@ -65,6 +65,10 @@ public class CollectorScheduler {
         String nodeName = environment.getProperty("spring.application.name", "Default-Node");
         LocalCollectorOwnershipService.LocalOwnership ownership = localCollectorOwnershipService.resolve(nodeName);
         String effectiveHostname = ownership == null ? nodeName : ownership.hostname();
+        if (ownership != null && !ownership.enabled()) {
+            log.debug("本地采集目标已禁用，跳过实时采集与推送: targetId={}, hostname={}", ownership.targetId(), effectiveHostname);
+            return;
+        }
 
         // 1. 存入数据库
         SystemMetricsHistory history = new SystemMetricsHistory();
@@ -77,7 +81,7 @@ public class CollectorScheduler {
         history.setTimestamp(java.time.LocalDateTime.now());
         history.setHostname(effectiveHostname);
         if (ownership != null) {
-            history.setUserId(ownership.userId());
+            history.setUserId(null);
             history.setTargetId(ownership.targetId());
         }
         metricsRepository.save(history);
@@ -89,6 +93,8 @@ public class CollectorScheduler {
                 .ip("127.0.0.1")
                 .hostname(effectiveHostname)
                 .timestamp(timestamp)
+                .userId(null)
+                .targetId(ownership == null ? null : ownership.targetId())
                 .build();
         metricsPublisher.send("/topic/metrics", cpuMetric);
 
@@ -99,6 +105,8 @@ public class CollectorScheduler {
                 .ip("127.0.0.1")
                 .hostname(effectiveHostname)
                 .timestamp(timestamp)
+                .userId(null)
+                .targetId(ownership == null ? null : ownership.targetId())
                 .build();
         metricsPublisher.send("/topic/metrics", memMetric);
 
@@ -108,6 +116,8 @@ public class CollectorScheduler {
                 .ip("127.0.0.1")
                 .hostname(effectiveHostname)
                 .timestamp(timestamp)
+                .userId(null)
+                .targetId(ownership == null ? null : ownership.targetId())
                 .build();
         metricsPublisher.send("/topic/metrics", diskMetric);
 
@@ -117,6 +127,8 @@ public class CollectorScheduler {
                 .ip("127.0.0.1")
                 .hostname(effectiveHostname)
                 .timestamp(timestamp)
+                .userId(null)
+                .targetId(ownership == null ? null : ownership.targetId())
                 .build();
         metricsPublisher.send("/topic/metrics", netRxMetric);
 
@@ -126,6 +138,8 @@ public class CollectorScheduler {
                 .ip("127.0.0.1")
                 .hostname(effectiveHostname)
                 .timestamp(timestamp)
+                .userId(null)
+                .targetId(ownership == null ? null : ownership.targetId())
                 .build();
         metricsPublisher.send("/topic/metrics", netTxMetric);
 
@@ -135,6 +149,8 @@ public class CollectorScheduler {
                 .ip("127.0.0.1")
                 .hostname(effectiveHostname)
                 .timestamp(timestamp)
+                .userId(null)
+                .targetId(ownership == null ? null : ownership.targetId())
                 .build();
         metricsPublisher.send("/topic/metrics", processMetric);
 
@@ -157,6 +173,10 @@ public class CollectorScheduler {
         String currentHost = environment.getProperty("spring.application.name", "Default-Node");
         LocalCollectorOwnershipService.LocalOwnership ownership = localCollectorOwnershipService.resolve(currentHost);
         String effectiveHostname = ownership == null ? currentHost : ownership.hostname();
+        if (ownership != null && !ownership.enabled()) {
+            log.debug("本地采集目标已禁用，跳过 AI 预测: targetId={}, hostname={}", ownership.targetId(), effectiveHostname);
+            return;
+        }
 
         // 2. 根据模式决定查询范围（策略分流）
         List<SystemMetricsHistory> history;

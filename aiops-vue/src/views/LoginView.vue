@@ -14,6 +14,10 @@
           <el-input v-model="form.password" type="password" :placeholder="t('passwordPlaceholder')" size="large"
             prefix-icon="Lock" show-password @keyup.enter="handleLogin" />
         </el-form-item>
+        <div class="auth-form-meta">
+          <span>{{ t('secureHint') }}</span>
+          <router-link to="/forgot-password">{{ t('forgotPassword') }}</router-link>
+        </div>
         <el-button type="primary" size="large" class="w-full mt-1" :loading="loading" @click="handleLogin">
           {{ t('login') }}
         </el-button>
@@ -47,6 +51,8 @@ const { t } = useI18n({
   usernamePlaceholder: { zh: '用户名', en: 'Username' },
   passwordPlaceholder: { zh: '密码', en: 'Password' },
   login: { zh: '登录', en: 'Sign In' },
+  secureHint: { zh: '企业账号安全登录', en: 'Secure enterprise sign-in' },
+  forgotPassword: { zh: '忘记密码？', en: 'Forgot password?' },
   noAccount: { zh: '还没有账号？', en: 'No account yet?' },
   registerNow: { zh: '立即注册', en: 'Register now' },
   usernameRequired: { zh: '请输入用户名', en: 'Please enter username' },

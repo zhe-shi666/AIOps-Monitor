@@ -13,6 +13,7 @@ import com.aiops.monitor.repository.TraceSpanRepository;
 import com.aiops.monitor.service.CurrentUserService;
 import com.aiops.monitor.service.EscalationPolicyService;
 import com.aiops.monitor.service.NotificationDispatcherService;
+import com.aiops.monitor.service.RoleGuardService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -42,6 +43,7 @@ public class IncidentCenterController {
     private final CurrentUserService currentUserService;
     private final EscalationPolicyService escalationPolicyService;
     private final NotificationDispatcherService notificationDispatcherService;
+    private final RoleGuardService roleGuardService;
 
     @GetMapping
     public ResponseEntity<Page<IncidentLog>> list(
@@ -54,8 +56,7 @@ public class IncidentCenterController {
             Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        Page<IncidentLog> incidents = incidentLogRepository.searchByUserId(
-                user.getId(),
+        Page<IncidentLog> incidents = incidentLogRepository.search(
                 normalizeUpper(status),
                 normalizeUpper(metricName),
                 normalize(hostname),
@@ -73,9 +74,9 @@ public class IncidentCenterController {
         int windowDays = Math.max(1, Math.min(365, days));
         LocalDateTime start = LocalDateTime.now().minusDays(windowDays);
 
-        long incidents = incidentLogRepository.countByUserIdAndCreatedAtAfter(user.getId(), start);
-        long occurrences = incidentLogRepository.sumOccurrenceByUserIdAndCreatedAtAfter(user.getId(), start);
-        long suppressed = incidentLogRepository.sumSuppressedByUserIdAndCreatedAtAfter(user.getId(), start);
+        long incidents = incidentLogRepository.countByCreatedAtAfter(start);
+        long occurrences = incidentLogRepository.sumOccurrenceByCreatedAtAfter(start);
+        long suppressed = incidentLogRepository.sumSuppressedByCreatedAtAfter(start);
         long deduplicated = Math.max(0, occurrences - incidents);
         double reductionRate = occurrences <= 0
                 ? 0d
@@ -96,7 +97,8 @@ public class IncidentCenterController {
                                                             @Valid @RequestBody IncidentStatusUpdateRequest request,
                                                             Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
-        IncidentLog incident = incidentLogRepository.findByIdAndUserId(id, user.getId())
+        roleGuardService.requireUserResourceOperator(user);
+        IncidentLog incident = incidentLogRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "告警事件不存在"));
         String beforeStatus = incident.getStatus();
 
@@ -153,11 +155,11 @@ public class IncidentCenterController {
                                                                          @RequestParam(defaultValue = "20") int size,
                                                                          Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
-        incidentLogRepository.findByIdAndUserId(id, user.getId())
+        incidentLogRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "告警事件不存在"));
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<NotificationDeliveryLog> deliveryLogs = notificationDeliveryLogRepository
-                .findByUserIdAndIncidentId(user.getId(), id, pageable);
+                .findByIncidentId(id, pageable);
         return ResponseEntity.ok(deliveryLogs);
     }
 
@@ -167,7 +169,7 @@ public class IncidentCenterController {
                                                        @RequestParam(defaultValue = "50") int limit,
                                                        Authentication authentication) {
         User user = currentUserService.requireUser(authentication);
-        IncidentLog incident = incidentLogRepository.findByIdAndUserId(id, user.getId())
+        IncidentLog incident = incidentLogRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "告警事件不存在"));
         int contextMinutes = Math.max(5, Math.min(1440, minutes));
         int contextLimit = Math.max(1, Math.min(200, limit));
@@ -176,14 +178,12 @@ public class IncidentCenterController {
         PageRequest contextPageable = PageRequest.of(0, contextLimit);
 
         List<LogRecord> logs = logRecordRepository.findIncidentContext(
-                user.getId(),
                 incident.getTargetId(),
                 normalize(incident.getHostname()),
                 startAt,
                 contextPageable
         );
         List<TraceSpan> traces = traceSpanRepository.findIncidentContext(
-                user.getId(),
                 incident.getTargetId(),
                 normalize(incident.getHostname()),
                 startAt,

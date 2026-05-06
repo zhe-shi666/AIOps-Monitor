@@ -7,6 +7,7 @@ import com.aiops.monitor.repository.SystemMetricsRepository;
 import com.aiops.monitor.service.AiService;
 import com.aiops.monitor.service.InvestigationOrchestrator;
 import com.aiops.monitor.service.LocalCollectorOwnershipService;
+import com.aiops.monitor.service.NotificationDispatcherService;
 import com.aiops.monitor.service.PromptDataBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,6 +50,9 @@ public class AlarmCheckTask {
     @Autowired
     private InvestigationOrchestrator investigationOrchestrator;
 
+    @Autowired
+    private NotificationDispatcherService notificationDispatcherService;
+
     @Value("${monitor.investigation.auto-open-from-incident:false}")
     private boolean autoOpenInvestigationFromIncident;
 
@@ -75,6 +79,9 @@ public class AlarmCheckTask {
 
     @Value("${monitor.threshold.net-tx:10485760}")
     private double netTxThreshold;
+
+    @Value("${monitor.escalation.p2-intervals:5,15,30}")
+    private String p2Intervals;
 
     @Scheduled(fixedRate = 5000) // 每 5 秒执行一次检测
     public void checkSystemHealth() {
@@ -151,13 +158,26 @@ public class AlarmCheckTask {
         logEntry.setMetricName(name);
         logEntry.setMetricValue(value);
         logEntry.setThreshold(threshold);
-        logEntry.setCreatedAt(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        logEntry.setCreatedAt(now);
         String unit = resolveUnit(name);
         String display = "%".equals(unit) ? String.format("%.2f%%", value) : String.format("%.2f%s", value, unit);
         String thresholdDisplay = "%".equals(unit) ? String.format("%.2f%%", threshold) : String.format("%.2f%s", threshold, unit);
         logEntry.setMessage(String.format("%s 指标超过阈值: %s > %s", name, display, thresholdDisplay));
         logEntry.setStatus("OPEN");
+        logEntry.setSeverity(calculateSeverity(value, threshold));
+        logEntry.setEscalationLevel(0);
+        logEntry.setLastNotifiedAt(now);
+        Integer firstIntervalMinutes = parseFirstIntervalMinutes();
+        logEntry.setNextNotifyAt(firstIntervalMinutes == null ? null : now.plusMinutes(firstIntervalMinutes));
+        logEntry.setOccurrenceCount(1);
+        logEntry.setSuppressedCount(0);
+        logEntry.setFirstSeenAt(now);
+        logEntry.setLastSeenAt(now);
+        logEntry.setSourceType("METRIC");
+        logEntry.setSourceRef(ownership == null || ownership.targetId() == null ? null : "target:" + ownership.targetId());
         IncidentLog saved = logRepository.save(logEntry);
+        notificationDispatcherService.dispatchIncidentOpened(saved);
         if (autoOpenInvestigationFromIncident) {
             try {
                 investigationOrchestrator.openFromIncident(saved);
@@ -207,5 +227,31 @@ public class AlarmCheckTask {
             return "";
         }
         return "B/s";
+    }
+
+    private String calculateSeverity(double value, double threshold) {
+        if (threshold <= 0) {
+            return "P2";
+        }
+        double ratio = value / threshold;
+        if (ratio >= 1.5d) {
+            return "P1";
+        }
+        if (ratio >= 1.2d) {
+            return "P2";
+        }
+        return "P3";
+    }
+
+    private Integer parseFirstIntervalMinutes() {
+        if (p2Intervals == null || p2Intervals.isBlank()) {
+            return 5;
+        }
+        String first = p2Intervals.split(",")[0].trim();
+        try {
+            return Integer.parseInt(first);
+        } catch (NumberFormatException ex) {
+            return 5;
+        }
     }
 }
