@@ -195,11 +195,6 @@ node tools/agent-lite/test/release-manifest-smoke.mjs
 - 希望在传统监控基础上增加 AI 辅助诊断能力的运维团队
 - 希望做私有化部署、演示交付、PoC 验证的项目团队
 
-## 说明
-
-- `dist/` 目录当前保存了 Agent 发布产物，便于演示和交付。
-- 如果你希望把本仓库作为纯源码仓库，可以将 `dist/` 移出仓库，改为通过 GitHub Releases 分发。
-- `mysql/data/` 为本地运行数据目录，已通过 `.gitignore` 忽略，不会进入版本库。
 
 ## License
 
