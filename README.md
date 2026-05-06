@@ -143,25 +143,25 @@ npm run dev
 - `dist/install-or-upgrade.sh`
 
 详细接入方式见：
-- [tools/agent-lite/README.md](/Users/linx/Documents/lth/AIOps-Monitor/tools/agent-lite/README.md)
+- [tools/agent-lite/README.md](tools/agent-lite/README.md)
 
 ## 企业交付文档
 
 以下文档已经补齐，可直接用于部署、演示与交付：
 
-- [企业交付使用手册](/Users/linx/Documents/lth/AIOps-Monitor/docs/企业交付使用手册.md)
-- [生产部署方案](/Users/linx/Documents/lth/AIOps-Monitor/docs/生产部署方案.md)
-- [备份恢复 SOP](/Users/linx/Documents/lth/AIOps-Monitor/docs/备份恢复SOP.md)
-- [企业安全与迁移说明](/Users/linx/Documents/lth/AIOps-Monitor/docs/企业安全与迁移说明.md)
-- [当前企业级 TODO 收口](/Users/linx/Documents/lth/AIOps-Monitor/docs/当前企业级TODO收口.md)
+- [企业交付使用手册](docs/企业交付使用手册.md)
+- [生产部署方案](docs/生产部署方案.md)
+- [备份恢复 SOP](docs/备份恢复SOP.md)
+- [企业安全与迁移说明](docs/企业安全与迁移说明.md)
+- [当前企业级 TODO 收口](docs/当前企业级TODO收口.md)
 
 阶段性交付过程文档：
-- [Phase 0](/Users/linx/Documents/lth/AIOps-Monitor/docs/phase-0/README.md)
-- [Phase 2](/Users/linx/Documents/lth/AIOps-Monitor/docs/phase-2/README.md)
-- [Phase 3](/Users/linx/Documents/lth/AIOps-Monitor/docs/phase-3/README.md)
-- [Phase 4](/Users/linx/Documents/lth/AIOps-Monitor/docs/phase-4/README.md)
-- [Phase 5](/Users/linx/Documents/lth/AIOps-Monitor/docs/phase-5/README.md)
-- [Phase 6](/Users/linx/Documents/lth/AIOps-Monitor/docs/phase-6/README.md)
+- [Phase 0](docs/phase-0/README.md)
+- [Phase 2](docs/phase-2/README.md)
+- [Phase 3](docs/phase-3/README.md)
+- [Phase 4](docs/phase-4/README.md)
+- [Phase 5](docs/phase-5/README.md)
+- [Phase 6](docs/phase-6/README.md)
 
 ## 测试与验证
 
